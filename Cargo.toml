@@ -1,0 +1,7 @@
+[package]
+name = "dcpu16-rs"
+version = "0.1.0"
+authors = ["Ryan Williams <git@ryan.nz>"]
+edition = "2018"
+
+[dependencies]
