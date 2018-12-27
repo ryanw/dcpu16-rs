@@ -18,6 +18,7 @@ use self::Registers::*;
 pub struct Processor {
     memory: Memory,
     registers: [u16; 12],
+    cycle_wait: u8,
 }
 
 impl Processor {
@@ -25,6 +26,14 @@ impl Processor {
         Processor {
             memory: Memory::new(),
             registers: [0; 12],
+            cycle_wait: 0,
+        }
+    }
+
+    pub fn tick(&mut self) {
+        if self.cycle_wait > 0 {
+            self.cycle_wait -= 1;
+            return;
         }
     }
 
@@ -33,6 +42,8 @@ impl Processor {
     }
 
     pub fn execute_add(&mut self, register: Registers, value: u16) {
+        self.cycle_wait += 1;
+
         let old_value: u16 = self.registers[register as usize];
         let (new_value, overflowed) = old_value.overflowing_add(value);
         self.registers[register as usize] = new_value;
@@ -45,6 +56,8 @@ impl Processor {
     }
 
     pub fn execute_sub(&mut self, register: Registers, value: u16) {
+        self.cycle_wait += 1;
+
         let old_value: u16 = self.registers[register as usize];
         let (new_value, overflowed) = old_value.overflowing_sub(value);
         self.registers[register as usize] = new_value;
@@ -57,6 +70,8 @@ impl Processor {
     }
 
     pub fn execute_mul(&mut self, register: Registers, value: u16) {
+        self.cycle_wait += 1;
+
         let old_value: u16 = self.registers[register as usize];
         let new_value = old_value.wrapping_mul(value);
         self.registers[register as usize] = new_value;
@@ -64,6 +79,8 @@ impl Processor {
     }
 
     pub fn execute_div(&mut self, register: Registers, value: u16) {
+        self.cycle_wait += 2;
+
         if value == 0 {
             self.registers[register as usize] = 0;
             self.registers[EX as usize] = 0;
