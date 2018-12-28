@@ -25,15 +25,11 @@ pub struct Processor {
 
 impl Processor {
     pub fn new() -> Processor {
-        let mut cpu = Processor {
+        Processor {
             memory: Memory::new(),
             registers: [0; 12],
             cycle_wait: 0,
-        };
-        // Start stack pointer at the end
-        cpu.registers[SP as usize] = 0xffff;
-
-        cpu
+        }
     }
 
     pub fn tick(&mut self) {
