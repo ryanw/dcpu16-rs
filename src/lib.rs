@@ -153,6 +153,39 @@ impl Processor {
         let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
         self.registers[register as usize] = unsafe { mem::transmute(old_value % value) };
     }
+
+    pub fn execute_and(&mut self, register: Registers, value: u16) {
+        let old_value = self.registers[register as usize];
+        self.registers[register as usize] = old_value & value;
+    }
+
+    pub fn execute_bor(&mut self, register: Registers, value: u16) {
+        let old_value = self.registers[register as usize];
+        self.registers[register as usize] = old_value | value;
+    }
+
+    pub fn execute_xor(&mut self, register: Registers, value: u16) {
+        let old_value = self.registers[register as usize];
+        self.registers[register as usize] = old_value ^ value;
+    }
+
+    pub fn execute_shr(&mut self, register: Registers, value: u8) {
+        let old_value = self.registers[register as usize];
+        self.registers[register as usize] = old_value >> value;
+        self.registers[EX as usize] = (((old_value as u32) << 16) >> value) as u16;
+    }
+
+    pub fn execute_asr(&mut self, register: Registers, value: u8) {
+        let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
+        self.registers[register as usize] = unsafe { mem::transmute(old_value >> value) };
+        self.registers[EX as usize] = unsafe { mem::transmute((((old_value as i32) << 16) >> value) as i16) };
+    }
+
+    pub fn execute_shl(&mut self, register: Registers, value: u8) {
+        let old_value = self.registers[register as usize];
+        self.registers[register as usize] = old_value << value;
+        self.registers[EX as usize] = (((old_value as u32) << value) >> 16) as u16;
+    }
 }
 
 pub struct Memory([u16; 0x10000]);
@@ -323,5 +356,56 @@ mod tests {
         machine.execute_set(A, unsafe { mem::transmute(-0x0007 as i16) });
         machine.execute_mdi(A, 0x0000);
         assert_eq!(machine.get_register(A), 0x0000);
+    }
+
+    #[test]
+    fn and_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0x0006);
+        machine.execute_and(A, 0x0003);
+        assert_eq!(machine.get_register(A), 0x0002);
+    }
+
+    #[test]
+    fn bor_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0x0006);
+        machine.execute_bor(A, 0x0003);
+        assert_eq!(machine.get_register(A), 0x0007);
+    }
+
+    #[test]
+    fn xor_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0x0006);
+        machine.execute_xor(A, 0x0003);
+        assert_eq!(machine.get_register(A), 0x0005);
+    }
+
+    #[test]
+    fn shr_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0xF0AA);
+        machine.execute_shr(A, 0x0002);
+        assert_eq!(machine.get_register(A), 0x3C2A);
+        assert_eq!(machine.get_register(EX), 0x8000);
+    }
+
+    #[test]
+    fn asr_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0xF0AA);
+        machine.execute_asr(A, 0x0002);
+        assert_eq!(machine.get_register(A), 0xFC2A);
+        assert_eq!(machine.get_register(EX), 0x8000);
+    }
+
+    #[test]
+    fn shl_the_a_register() {
+        let mut machine = Processor::new();
+        machine.execute_set(A, 0xF0AA);
+        machine.execute_shl(A, 0x0002);
+        assert_eq!(machine.get_register(A), 0xC2A8);
+        assert_eq!(machine.get_register(EX), 0x0003);
     }
 }
