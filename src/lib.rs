@@ -1,7 +1,18 @@
+#[cfg(test)]
+mod tests;
+
 mod opcodes;
 use self::opcodes::*;
 use std::mem;
 use std::ops::{Index, IndexMut};
+
+fn to_signed(val: u16) -> i16 {
+    unsafe { mem::transmute(val) }
+}
+
+fn to_unsigned(val: i16) -> u16 {
+    unsafe { mem::transmute(val) }
+}
 
 pub struct Instruction {
     op: OpCode,
@@ -40,6 +51,231 @@ impl Instruction {
         }
 
         words
+    }
+
+    pub fn execute(&self, processor: &mut Processor) {
+        let a = self.get_a(processor);
+        self.set_b(processor, a);
+    }
+
+    pub fn get_a(&self, processor: &mut Processor) -> u16 {
+        match self.a {
+            Value::Register(reg) => processor.get_register(reg),
+            Value::AtRegister(reg) => {
+                let addr = processor.get_register(reg);
+                processor.memory[addr]
+            }
+            Value::AfterRegister(reg) => {
+                let addr = processor.get_register(reg) + processor.next_word();
+                processor.memory[addr]
+            }
+            Value::Push | Value::Pop => {
+                // A is always POP
+                processor.pop()
+            }
+            Value::Peek => processor.peek(),
+            Value::Pick => {
+                let addr = processor.get_register(SP) + processor.next_word();
+                processor.memory[addr]
+            }
+            Value::AtNextWord => {
+                let addr = processor.next_word();
+                processor.memory[addr]
+            }
+            Value::NextWord => processor.next_word(),
+            Value::Literal(literal) => literal,
+        }
+    }
+
+    pub fn get_b(&self, processor: &mut Processor) -> u16 {
+        match self.b {
+            Value::Register(reg) => processor.get_register(reg),
+            Value::AtRegister(reg) => {
+                let addr = processor.get_register(reg);
+                processor.memory[addr]
+            }
+            Value::AfterRegister(reg) => {
+                let addr = processor.get_register(reg) + processor.next_word();
+                processor.memory[addr]
+            }
+            Value::Push | Value::Pop => {
+                // B is always PUSH
+                processor.inc(SP);
+                let addr = processor.get_register(SP);
+                processor.memory[addr]
+            }
+            Value::Peek => processor.peek(),
+            Value::Pick => {
+                let addr = processor.get_register(SP) + processor.next_word();
+                processor.memory[addr]
+            }
+            Value::AtNextWord => {
+                let addr = processor.next_word();
+                processor.memory[addr]
+            }
+            Value::NextWord => processor.next_word(),
+            Value::Literal(literal) => literal + 0x21,
+        }
+    }
+
+    /// Returns the value in `b` without modifing any registers or using cycles
+    pub fn peek_b(&self, processor: &Processor) -> u16 {
+        match self.b {
+            Value::Register(reg) => processor.get_register(reg),
+            Value::AtRegister(reg) => {
+                let addr = processor.get_register(reg);
+                processor.memory[addr]
+            }
+            Value::AfterRegister(reg) => {
+                let addr = processor.get_register(reg) + processor.peek_next_word();
+                processor.memory[addr]
+            }
+            Value::Push | Value::Pop => {
+                // B is always PUSH
+                let addr = processor.get_register(SP);
+                processor.memory[addr]
+            }
+            Value::Peek => processor.peek(),
+            Value::Pick => {
+                let addr = processor.get_register(SP) + processor.peek_next_word();
+                processor.memory[addr]
+            }
+            Value::AtNextWord => {
+                let addr = processor.peek_next_word();
+                processor.memory[addr]
+            }
+            Value::NextWord => processor.peek_next_word(),
+            Value::Literal(literal) => literal + 0x21,
+        }
+    }
+
+    pub fn set_b(&self, processor: &mut Processor, a: u16) {
+        // Get current `b` value to apply the operation to
+        let b = self.peek_b(processor);
+        let mut ex = processor.get_register(EX);
+        let new_value = match self.op {
+            SET => a,
+            ADD => {
+                processor.cycle_wait += 1;
+                let (value, overflowed) = b.overflowing_add(a);
+                if overflowed {
+                    ex = 0x0001;
+                } else {
+                    ex = 0x0000;
+                }
+
+                value
+            }
+            SUB => {
+                processor.cycle_wait += 1;
+                let (value, overflowed) = b.overflowing_sub(a);
+                if overflowed {
+                    ex = 0xFFFF;
+                } else {
+                    ex = 0x0000;
+                }
+
+                value
+            }
+            MUL => {
+                processor.cycle_wait += 1;
+                ex = (((b as u32 * a as u32) >> 16) & 0xFFFF) as u16;
+                b.wrapping_mul(a)
+            }
+            MLI => {
+                processor.cycle_wait += 1;
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+                ex = to_unsigned((((signed_b as i32 * signed_a as i32) >> 16) & 0xFFFF) as i16);
+                to_unsigned(signed_b.wrapping_mul(signed_a))
+            }
+            DIV => {
+                processor.cycle_wait += 2;
+
+                if a == 0 {
+                    ex = 0;
+                    0
+                } else {
+                    ex = ((((b as u32) << 16) / a as u32) & 0xFFFF) as u16;
+                    b.wrapping_div(a)
+                }
+            }
+            DVI => {
+                processor.cycle_wait += 2;
+
+                if a == 0 {
+                    ex = 0;
+                    0
+                } else {
+                    let signed_b = to_signed(b);
+                    let signed_a = to_signed(a);
+                    ex = to_unsigned(
+                        ((((signed_b as i32) << 16) / signed_a as i32) & 0xFFFF) as i16,
+                    );
+                    to_unsigned(signed_b.wrapping_div(signed_a))
+                }
+            }
+            MOD => {
+                processor.cycle_wait += 2;
+                if a == 0 {
+                    0
+                } else {
+                    b % a
+                }
+            }
+            MDI => {
+                processor.cycle_wait += 2;
+                if a == 0 {
+                    0
+                } else {
+                    let signed_b = to_signed(b);
+                    let signed_a = to_signed(a);
+                    to_unsigned(signed_b % signed_a)
+                }
+            }
+            AND => b & a,
+            BOR => b | a,
+            XOR => b ^ a,
+            SHR => {
+                ex = (((b as u32) << 16) >> a) as u16;
+                b >> a
+            }
+            ASR => {
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+                ex = (((signed_b as u32) << 16) >> signed_a) as u16;
+                to_unsigned(signed_b >> signed_a)
+            }
+            SHL => {
+                ex = (((b as u32) << a) >> 16) as u16;
+                b << a
+            }
+            _ => panic!("Invalid op code {}", self.op),
+        };
+
+        processor.set_register(EX, ex);
+
+        // Write to `b`
+        match self.b {
+            Value::Register(reg) => {
+                processor.registers[reg as usize] = new_value;
+            }
+            Value::AtRegister(reg) => {
+                let addr = processor.get_register(reg);
+                processor.memory[addr] = new_value;
+            }
+            Value::AfterRegister(reg) => {}
+            Value::Push | Value::Pop => {
+                // B is always PUSH
+                let addr = processor.get_register(SP);
+                processor.memory[addr] = new_value;
+            }
+            Value::Peek => {}
+            Value::Pick => {}
+            Value::AtNextWord => {}
+            Value::NextWord => {}
+            Value::Literal(literal) => {}
+        }
     }
 }
 
@@ -162,43 +398,44 @@ impl Processor {
         let addr = self.get_register(PC);
         let instruction = self.memory.get_instruction(addr);
         self.inc(PC);
-        self.execute_instruction(instruction);
-    }
-
-    pub fn execute_instruction(&mut self, instruction: Instruction) {
-        let Instruction { op, b, a } = instruction;
-        let a_value = match a {
-            Value::NextWord => {
-                self.cycle_wait += 1;
-                self.next_word()
-            }
-            _ => panic!("Invalid 'a' value: {:?}", a),
-        };
-        match op {
-            SET => match b {
-                Value::Register(reg) => {
-                    self.registers[reg as usize] = a_value;
-                },
-                _ => panic!("Invalid 'a' value: {:?}", a),
-            },
-            _ => panic!("Invalid op code {}", op),
-        }
+        instruction.execute(self);
     }
 
     pub fn next_word(&mut self) -> u16 {
-        let addr = self.get_register(PC);
-        let value = self.memory[addr];
+        let word = self.peek_next_word();
         self.inc(PC);
+        self.cycle_wait += 1;
 
-        value
+        word
+    }
+
+    pub fn peek_next_word(&self) -> u16 {
+        let addr = self.get_register(PC);
+        self.memory[addr]
     }
 
     pub fn next_value(&mut self) -> Value {
         let word = self.next_word();
         let value = Value::from(word);
-        println!("GOT VALUE: {:?}", value);
 
         value
+    }
+
+    pub fn push(&mut self, value: u16) {
+        let addr = self.get_register(SP);
+        self.dec(SP);
+        self.memory[addr] = value;
+    }
+
+    pub fn pop(&mut self) -> u16 {
+        let addr = self.get_register(SP);
+        self.inc(SP);
+        self.memory[addr]
+    }
+
+    pub fn peek(&self) -> u16 {
+        let addr = self.get_register(SP);
+        self.memory[addr]
     }
 
     pub fn inc(&mut self, register: Register) {
@@ -221,8 +458,16 @@ impl Processor {
         self.registers[register as usize]
     }
 
+    pub fn set_register(&mut self, register: Register, value: u16) {
+        self.registers[register as usize] = value;
+    }
+
     pub fn get_signed_register(&self, register: Register) -> i16 {
-        unsafe { mem::transmute(self.registers[register as usize]) }
+        to_signed(self.registers[register as usize])
+    }
+
+    pub fn set_signed_register(&mut self, register: Register, value: i16) {
+        self.registers[register as usize] = to_unsigned(value);
     }
 
     pub fn execute_set(&mut self, register: Register, value: u16) {
@@ -281,11 +526,11 @@ impl Processor {
     pub fn execute_mli(&mut self, register: Register, value: i16) {
         self.cycle_wait += 1;
 
-        let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
-        let new_value: i16 = old_value.wrapping_mul(value);
-        self.registers[register as usize] = unsafe { mem::transmute(new_value) };
+        let old_value = to_signed(self.registers[register as usize]);
+        let new_value = old_value.wrapping_mul(value);
+        self.registers[register as usize] = to_unsigned(new_value);
         self.registers[EX as usize] =
-            unsafe { mem::transmute((((old_value as i32 * value as i32) >> 16) & 0xFFFF) as i16) };
+            to_unsigned((((old_value as i32 * value as i32) >> 16) & 0xFFFF) as i16);
     }
 
     pub fn execute_dvi(&mut self, register: Register, value: i16) {
@@ -296,12 +541,11 @@ impl Processor {
             self.registers[EX as usize] = 0;
             return;
         }
-        let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
-        let new_value: i16 = old_value.wrapping_div(value);
-        self.registers[register as usize] = unsafe { mem::transmute(new_value) };
-        self.registers[EX as usize] = unsafe {
-            mem::transmute(((((old_value as i32) << 16) / value as i32) & 0xFFFF) as i16)
-        };
+        let old_value = to_signed(self.registers[register as usize]);
+        let new_value = old_value.wrapping_div(value);
+        self.registers[register as usize] = to_unsigned(new_value);
+        self.registers[EX as usize] =
+            to_unsigned(((((old_value as i32) << 16) / value as i32) & 0xFFFF) as i16);
     }
 
     pub fn execute_mod(&mut self, register: Register, value: u16) {
@@ -324,8 +568,8 @@ impl Processor {
             return;
         }
 
-        let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
-        self.registers[register as usize] = unsafe { mem::transmute(old_value % value) };
+        let old_value = to_signed(self.registers[register as usize]);
+        self.registers[register as usize] = to_unsigned(old_value % value);
     }
 
     pub fn execute_and(&mut self, register: Register, value: u16) {
@@ -350,10 +594,9 @@ impl Processor {
     }
 
     pub fn execute_asr(&mut self, register: Register, value: u8) {
-        let old_value: i16 = unsafe { mem::transmute(self.registers[register as usize]) };
-        self.registers[register as usize] = unsafe { mem::transmute(old_value >> value) };
-        self.registers[EX as usize] =
-            unsafe { mem::transmute((((old_value as i32) << 16) >> value) as i16) };
+        let old_value = to_signed(self.registers[register as usize]);
+        self.registers[register as usize] = to_unsigned(old_value >> value);
+        self.registers[EX as usize] = to_unsigned((((old_value as i32) << 16) >> value) as i16);
     }
 
     pub fn execute_shl(&mut self, register: Register, value: u8) {
@@ -370,15 +613,15 @@ impl Memory {
     }
 
     pub fn set(&mut self, addr: u16, value: u16) {
-        self.0[addr as usize] = value;
+        self[addr] = value;
     }
 
     pub fn get(&mut self, addr: u16) -> u16 {
-        self.0[addr as usize]
+        self[addr]
     }
 
     pub fn get_instruction(&self, addr: u16) -> Instruction {
-        let word = self.0[addr as usize];
+        let word = self[addr];
         let op = word & 0b0000000000011111;
         let b = (word & 0b0000001111100000) >> 5;
         let a = (word & 0b1111110000000000) >> 10;
@@ -396,233 +639,5 @@ impl Index<u16> for Memory {
 impl IndexMut<u16> for Memory {
     fn index_mut(&mut self, addr: u16) -> &mut u16 {
         &mut self.0[addr as usize]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn load_value_into_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x000E);
-        assert_eq!(machine.get_register(A), 0x000E);
-    }
-
-    #[test]
-    fn add_value_to_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0003);
-        machine.execute_add(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0x0005);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn add_overflow_value_to_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0xFFFD);
-        machine.execute_add(A, 0x0005);
-        assert_eq!(machine.get_register(A), 0x0002);
-        assert_eq!(machine.get_register(EX), 0x0001);
-    }
-
-    #[test]
-    fn sub_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0005);
-        machine.execute_sub(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0x0003);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn sub_underflow_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0002);
-        machine.execute_sub(A, 0x0005);
-        assert_eq!(machine.get_register(A), 0xFFFD);
-        assert_eq!(machine.get_register(EX), 0xFFFF);
-    }
-
-    #[test]
-    fn mul_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0005);
-        machine.execute_mul(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0x000A);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn mul_underflow_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0xFFF0);
-        machine.execute_mul(A, 0x0003);
-        assert_eq!(machine.get_register(A), 0xFFD0);
-        assert_eq!(machine.get_register(EX), 0x0002);
-    }
-
-    #[test]
-    fn div_whole_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x000A);
-        machine.execute_div(A, 0x0005);
-        assert_eq!(machine.get_register(A), 0x0002);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn div_remainder_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x000B);
-        machine.execute_div(A, 0x0004);
-        assert_eq!(machine.get_register(A), 0x0002);
-        assert_eq!(machine.get_register(EX), 0xC000); // 0.75
-    }
-
-    #[test]
-    fn div_the_a_register_by_zero() {
-        let mut machine = Processor::new();
-        machine.execute_set(EX, 0x0001);
-        machine.execute_set(A, 0x0006);
-        machine.execute_div(A, 0x0000);
-        assert_eq!(machine.get_register(A), 0x0000);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn mli_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, unsafe { mem::transmute(-0x0005 as i16) });
-        machine.execute_mli(A, 0x0002);
-        assert_eq!(machine.get_signed_register(A), -0x000A);
-        assert_eq!(machine.get_register(EX), 0xFFFF);
-    }
-
-    #[test]
-    fn mli_underflow_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, unsafe { mem::transmute(-0x7000 as i16) });
-        machine.execute_mli(A, 0x0006);
-        assert_eq!(machine.get_signed_register(A), 0x6000);
-        assert_eq!(machine.get_register(EX), 0xFFFD);
-    }
-
-    #[test]
-    fn dvi_remainder_value_from_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, unsafe { mem::transmute(-0x000B as i16) });
-        machine.execute_dvi(A, 0x0004);
-        assert_eq!(machine.get_signed_register(A), -0x0002);
-        assert_eq!(machine.get_register(EX), 0x4000); // 0.25
-    }
-
-    #[test]
-    fn dvi_the_a_register_by_zero() {
-        let mut machine = Processor::new();
-        machine.execute_set(EX, 0x0001);
-        machine.execute_set(A, unsafe { mem::transmute(-0x000B as i16) });
-        machine.execute_dvi(A, 0x0000);
-        assert_eq!(machine.get_register(A), 0x0000);
-        assert_eq!(machine.get_register(EX), 0x0000);
-    }
-
-    #[test]
-    fn mod_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x000B);
-        machine.execute_mod(A, 0x0004);
-        assert_eq!(machine.get_register(A), 0x0003);
-    }
-
-    #[test]
-    fn mod_the_a_register_by_zero() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x000B);
-        machine.execute_mod(A, 0x0000);
-        assert_eq!(machine.get_register(A), 0x0000);
-    }
-
-    #[test]
-    fn mdi_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, unsafe { mem::transmute(-0x0007 as i16) });
-        machine.execute_mdi(A, 0x0004);
-        assert_eq!(machine.get_signed_register(A), -0x0003);
-    }
-
-    #[test]
-    fn mdi_the_a_register_by_zero() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, unsafe { mem::transmute(-0x0007 as i16) });
-        machine.execute_mdi(A, 0x0000);
-        assert_eq!(machine.get_register(A), 0x0000);
-    }
-
-    #[test]
-    fn and_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0006);
-        machine.execute_and(A, 0x0003);
-        assert_eq!(machine.get_register(A), 0x0002);
-    }
-
-    #[test]
-    fn bor_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0006);
-        machine.execute_bor(A, 0x0003);
-        assert_eq!(machine.get_register(A), 0x0007);
-    }
-
-    #[test]
-    fn xor_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0x0006);
-        machine.execute_xor(A, 0x0003);
-        assert_eq!(machine.get_register(A), 0x0005);
-    }
-
-    #[test]
-    fn shr_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0xF0AA);
-        machine.execute_shr(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0x3C2A);
-        assert_eq!(machine.get_register(EX), 0x8000);
-    }
-
-    #[test]
-    fn asr_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0xF0AA);
-        machine.execute_asr(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0xFC2A);
-        assert_eq!(machine.get_register(EX), 0x8000);
-    }
-
-    #[test]
-    fn shl_the_a_register() {
-        let mut machine = Processor::new();
-        machine.execute_set(A, 0xF0AA);
-        machine.execute_shl(A, 0x0002);
-        assert_eq!(machine.get_register(A), 0xC2A8);
-        assert_eq!(machine.get_register(EX), 0x0003);
-    }
-
-    #[test]
-    fn executes_instruction_at_pc() {
-        let mut machine = Processor::new();
-        let mut words =
-            Instruction::new(SET, Value::Register(A), Value::NextWord).words(&mut machine);
-        words.push(0xDEAD);
-        for (i, &word) in words.iter().enumerate() {
-            machine.memory[i as u16] = word;
-        }
-        assert_eq!(machine.get_register(A), 0x0000);
-        machine.tick();
-        assert_eq!(machine.get_register(A), 0xDEAD);
     }
 }

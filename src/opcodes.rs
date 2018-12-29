@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub type OpCode = u16;
 pub const SPL: OpCode = 0x0000;
 pub const SET: OpCode = 0x0001;
