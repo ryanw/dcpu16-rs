@@ -275,32 +275,7 @@ impl Instruction {
                 setter = false;
                 processor.cycle_wait += 1;
                 if b & a == 0 {
-                    // Condition failed, skip next instruction
-                    let addr = processor.get_register(PC);
-                    let Instruction {op, b, a } = processor.memory.get_instruction(addr);
-                    match b {
-                        Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
-                            processor.inc(PC);
-                            processor.cycle_wait += 1;
-                        }
-                        _ => {}
-                    }
-                    match a {
-                        Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
-                            processor.inc(PC);
-                            processor.cycle_wait += 1;
-                        }
-                        _ => {}
-                    }
-                    match op {
-                        // Chaining IFn conditions
-                        0x10..=0x17 => {
-                            processor.inc(PC);
-                            processor.cycle_wait += 1;
-                        }
-                        _ => {}
-                    }
-                    processor.inc(PC);
+                    self.condition_failure(processor);
                 }
                 0
             }
@@ -308,12 +283,7 @@ impl Instruction {
                 setter = false;
                 processor.cycle_wait += 1;
                 if b & a != 0 {
-                    // Condition failed, skip next instruction
-                    // FIXME find length of next instruction
-                    processor.inc(PC);
-                    processor.inc(PC);
-                    // FIXME if next instruction is also an `if`, then skip again
-                    processor.cycle_wait += 1;
+                    self.condition_failure(processor);
                 }
                 0
             }
@@ -345,6 +315,35 @@ impl Instruction {
                 Value::Literal(literal) => {}
             }
         }
+    }
+
+    pub fn condition_failure(&self, processor: &mut Processor) {
+        // Condition failed, skip next instruction
+        let addr = processor.get_register(PC);
+        let Instruction { op, b, a } = processor.memory.get_instruction(addr);
+        match b {
+            Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+                processor.inc(PC);
+                processor.cycle_wait += 1;
+            }
+            _ => {}
+        }
+        match a {
+            Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+                processor.inc(PC);
+                processor.cycle_wait += 1;
+            }
+            _ => {}
+        }
+        match op {
+            // Chaining IFn conditions
+            0x10..=0x17 => {
+                processor.inc(PC);
+                processor.cycle_wait += 1;
+            }
+            _ => {}
+        }
+        processor.inc(PC);
     }
 }
 
@@ -520,12 +519,6 @@ impl Processor {
         self.registers[register as usize] = old_value.wrapping_sub(1);
     }
 
-    pub fn get(&mut self, value: Value) -> u16 {
-        match value {
-            _ => panic!("Unknown value: {:?}", value),
-        }
-    }
-
     pub fn get_register(&self, register: Register) -> u16 {
         self.registers[register as usize]
     }
@@ -540,141 +533,6 @@ impl Processor {
 
     pub fn set_signed_register(&mut self, register: Register, value: i16) {
         self.registers[register as usize] = to_unsigned(value);
-    }
-
-    pub fn execute_set(&mut self, register: Register, value: u16) {
-        self.registers[register as usize] = value;
-    }
-
-    pub fn execute_add(&mut self, register: Register, value: u16) {
-        self.cycle_wait += 1;
-
-        let old_value = self.registers[register as usize];
-        let (new_value, overflowed) = old_value.overflowing_add(value);
-        self.registers[register as usize] = new_value;
-        if overflowed {
-            self.registers[EX as usize] = 0x0001;
-        } else {
-            self.registers[EX as usize] = 0x0000;
-        }
-    }
-
-    pub fn execute_sub(&mut self, register: Register, value: u16) {
-        self.cycle_wait += 1;
-
-        let old_value = self.registers[register as usize];
-        let (new_value, overflowed) = old_value.overflowing_sub(value);
-        self.registers[register as usize] = new_value;
-        if overflowed {
-            self.registers[EX as usize] = 0xFFFF;
-        } else {
-            self.registers[EX as usize] = 0x0000;
-        }
-    }
-
-    pub fn execute_mul(&mut self, register: Register, value: u16) {
-        self.cycle_wait += 1;
-
-        let old_value = self.registers[register as usize];
-        let new_value = old_value.wrapping_mul(value);
-        self.registers[register as usize] = new_value;
-        self.registers[EX as usize] = (((old_value as u32 * value as u32) >> 16) & 0xFFFF) as u16;
-    }
-
-    pub fn execute_div(&mut self, register: Register, value: u16) {
-        self.cycle_wait += 2;
-
-        if value == 0 {
-            self.registers[register as usize] = 0;
-            self.registers[EX as usize] = 0;
-            return;
-        }
-        let old_value = self.registers[register as usize];
-        let new_value = old_value.wrapping_div(value);
-        self.registers[register as usize] = new_value;
-        self.registers[EX as usize] = ((((old_value as u32) << 16) / value as u32) & 0xFFFF) as u16;
-    }
-
-    pub fn execute_mli(&mut self, register: Register, value: i16) {
-        self.cycle_wait += 1;
-
-        let old_value = to_signed(self.registers[register as usize]);
-        let new_value = old_value.wrapping_mul(value);
-        self.registers[register as usize] = to_unsigned(new_value);
-        self.registers[EX as usize] =
-            to_unsigned((((old_value as i32 * value as i32) >> 16) & 0xFFFF) as i16);
-    }
-
-    pub fn execute_dvi(&mut self, register: Register, value: i16) {
-        self.cycle_wait += 2;
-
-        if value == 0 {
-            self.registers[register as usize] = 0;
-            self.registers[EX as usize] = 0;
-            return;
-        }
-        let old_value = to_signed(self.registers[register as usize]);
-        let new_value = old_value.wrapping_div(value);
-        self.registers[register as usize] = to_unsigned(new_value);
-        self.registers[EX as usize] =
-            to_unsigned(((((old_value as i32) << 16) / value as i32) & 0xFFFF) as i16);
-    }
-
-    pub fn execute_mod(&mut self, register: Register, value: u16) {
-        self.cycle_wait += 2;
-
-        if value == 0 {
-            self.registers[register as usize] = 0;
-            return;
-        }
-
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value % value;
-    }
-
-    pub fn execute_mdi(&mut self, register: Register, value: i16) {
-        self.cycle_wait += 2;
-
-        if value == 0 {
-            self.registers[register as usize] = 0;
-            return;
-        }
-
-        let old_value = to_signed(self.registers[register as usize]);
-        self.registers[register as usize] = to_unsigned(old_value % value);
-    }
-
-    pub fn execute_and(&mut self, register: Register, value: u16) {
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value & value;
-    }
-
-    pub fn execute_bor(&mut self, register: Register, value: u16) {
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value | value;
-    }
-
-    pub fn execute_xor(&mut self, register: Register, value: u16) {
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value ^ value;
-    }
-
-    pub fn execute_shr(&mut self, register: Register, value: u8) {
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value >> value;
-        self.registers[EX as usize] = (((old_value as u32) << 16) >> value) as u16;
-    }
-
-    pub fn execute_asr(&mut self, register: Register, value: u8) {
-        let old_value = to_signed(self.registers[register as usize]);
-        self.registers[register as usize] = to_unsigned(old_value >> value);
-        self.registers[EX as usize] = to_unsigned((((old_value as i32) << 16) >> value) as i16);
-    }
-
-    pub fn execute_shl(&mut self, register: Register, value: u8) {
-        let old_value = self.registers[register as usize];
-        self.registers[register as usize] = old_value << value;
-        self.registers[EX as usize] = (((old_value as u32) << value) >> 16) as u16;
     }
 }
 
