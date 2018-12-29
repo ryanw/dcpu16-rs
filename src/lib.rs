@@ -14,6 +14,26 @@ fn to_unsigned(val: i16) -> u16 {
     unsafe { mem::transmute(val) }
 }
 
+pub struct Program(Vec<u16>);
+impl Program {
+    pub fn new() -> Program {
+        Program(Vec::with_capacity(64))
+    }
+
+    pub fn add(&mut self, op: OpCode, b: Value, a: Value) {
+        let inst = Instruction::new(op, b, a);
+        self.0.append(&mut inst.words());
+    }
+
+    pub fn add_word(&mut self, word: u16) {
+        self.0.push(word);
+    }
+
+    pub fn words(&self) -> &Vec<u16> {
+        &self.0
+    }
+}
+
 pub struct Instruction {
     op: OpCode,
     b: Value,
@@ -33,10 +53,10 @@ impl Instruction {
         }
     }
 
-    pub fn words(&self, processor: &mut Processor) -> Vec<u16> {
+    pub fn words(&self) -> Vec<u16> {
         let mut words = Vec::with_capacity(3);
-        let a = self.a.get_a(processor);
-        let b = self.b.get_b(processor);
+        let a = self.a.get_a();
+        let b = self.b.get_b();
         let word = self.op | a | b;
 
         words.push(word);
@@ -153,6 +173,7 @@ impl Instruction {
         // Get current `b` value to apply the operation to
         let b = self.peek_b(processor);
         let mut ex = processor.get_register(EX);
+        let mut setter = true;
         let new_value = match self.op {
             SET => a,
             ADD => {
@@ -250,31 +271,79 @@ impl Instruction {
                 ex = (((b as u32) << a) >> 16) as u16;
                 b << a
             }
+            IFB => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b & a == 0 {
+                    // Condition failed, skip next instruction
+                    let addr = processor.get_register(PC);
+                    let Instruction {op, b, a } = processor.memory.get_instruction(addr);
+                    match b {
+                        Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+                            processor.inc(PC);
+                            processor.cycle_wait += 1;
+                        }
+                        _ => {}
+                    }
+                    match a {
+                        Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+                            processor.inc(PC);
+                            processor.cycle_wait += 1;
+                        }
+                        _ => {}
+                    }
+                    match op {
+                        // Chaining IFn conditions
+                        0x10..=0x17 => {
+                            processor.inc(PC);
+                            processor.cycle_wait += 1;
+                        }
+                        _ => {}
+                    }
+                    processor.inc(PC);
+                }
+                0
+            }
+            IFC => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b & a != 0 {
+                    // Condition failed, skip next instruction
+                    // FIXME find length of next instruction
+                    processor.inc(PC);
+                    processor.inc(PC);
+                    // FIXME if next instruction is also an `if`, then skip again
+                    processor.cycle_wait += 1;
+                }
+                0
+            }
             _ => panic!("Invalid op code {}", self.op),
         };
 
-        processor.set_register(EX, ex);
+        if setter {
+            processor.set_register(EX, ex);
 
-        // Write to `b`
-        match self.b {
-            Value::Register(reg) => {
-                processor.registers[reg as usize] = new_value;
+            // Write to `b`
+            match self.b {
+                Value::Register(reg) => {
+                    processor.registers[reg as usize] = new_value;
+                }
+                Value::AtRegister(reg) => {
+                    let addr = processor.get_register(reg);
+                    processor.memory[addr] = new_value;
+                }
+                Value::AfterRegister(reg) => {}
+                Value::Push | Value::Pop => {
+                    // B is always PUSH
+                    let addr = processor.get_register(SP);
+                    processor.memory[addr] = new_value;
+                }
+                Value::Peek => {}
+                Value::Pick => {}
+                Value::AtNextWord => {}
+                Value::NextWord => {}
+                Value::Literal(literal) => {}
             }
-            Value::AtRegister(reg) => {
-                let addr = processor.get_register(reg);
-                processor.memory[addr] = new_value;
-            }
-            Value::AfterRegister(reg) => {}
-            Value::Push | Value::Pop => {
-                // B is always PUSH
-                let addr = processor.get_register(SP);
-                processor.memory[addr] = new_value;
-            }
-            Value::Peek => {}
-            Value::Pick => {}
-            Value::AtNextWord => {}
-            Value::NextWord => {}
-            Value::Literal(literal) => {}
         }
     }
 }
@@ -297,11 +366,11 @@ impl Value {
         u16::from(*self)
     }
 
-    pub fn get_a(&self, processor: &mut Processor) -> u16 {
+    pub fn get_a(&self) -> u16 {
         self.to_u16() << 10
     }
 
-    pub fn get_b(&self, processor: &mut Processor) -> u16 {
+    pub fn get_b(&self) -> u16 {
         self.to_u16() << 5
     }
 }
@@ -374,6 +443,7 @@ pub struct Processor {
     memory: Memory,
     registers: [u16; 12],
     cycle_wait: u8,
+    cycle: u16,
 }
 
 impl Processor {
@@ -382,10 +452,12 @@ impl Processor {
             memory: Memory::new(),
             registers: [0; 12],
             cycle_wait: 0,
+            cycle: 0,
         }
     }
 
     pub fn tick(&mut self) {
+        self.cycle += 1;
         if self.cycle_wait > 0 {
             self.cycle_wait -= 1;
             return;
@@ -627,6 +699,12 @@ impl Memory {
         let a = (word & 0b1111110000000000) >> 10;
 
         Instruction::new_from_u16(op, b, a)
+    }
+
+    pub fn load_program(&mut self, addr: u16, program: &Program) {
+        for (i, &word) in program.words().iter().enumerate() {
+            self[addr + i as u16] = word;
+        }
     }
 }
 impl Index<u16> for Memory {
