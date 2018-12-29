@@ -81,11 +81,11 @@ impl Instruction {
     pub fn get_a(&self, processor: &mut Processor) -> u16 {
         match self.a {
             Value::Register(reg) => processor.get_register(reg),
-            Value::AtRegister(reg) => {
+            Value::RegisterPointer(reg) => {
                 let addr = processor.get_register(reg);
                 processor.memory[addr]
             }
-            Value::AfterRegister(reg) => {
+            Value::RegisterPointerOffset(reg) => {
                 let addr = processor.get_register(reg) + processor.next_word();
                 processor.memory[addr]
             }
@@ -98,7 +98,7 @@ impl Instruction {
                 let addr = processor.get_register(SP) + processor.next_word();
                 processor.memory[addr]
             }
-            Value::AtNextWord => {
+            Value::NextWordPointer => {
                 let addr = processor.next_word();
                 processor.memory[addr]
             }
@@ -110,11 +110,11 @@ impl Instruction {
     pub fn get_b(&self, processor: &mut Processor) -> u16 {
         match self.b {
             Value::Register(reg) => processor.get_register(reg),
-            Value::AtRegister(reg) => {
+            Value::RegisterPointer(reg) => {
                 let addr = processor.get_register(reg);
                 processor.memory[addr]
             }
-            Value::AfterRegister(reg) => {
+            Value::RegisterPointerOffset(reg) => {
                 let addr = processor.get_register(reg) + processor.next_word();
                 processor.memory[addr]
             }
@@ -129,7 +129,7 @@ impl Instruction {
                 let addr = processor.get_register(SP) + processor.next_word();
                 processor.memory[addr]
             }
-            Value::AtNextWord => {
+            Value::NextWordPointer => {
                 let addr = processor.next_word();
                 processor.memory[addr]
             }
@@ -142,11 +142,11 @@ impl Instruction {
     pub fn peek_b(&self, processor: &Processor) -> u16 {
         match self.b {
             Value::Register(reg) => processor.get_register(reg),
-            Value::AtRegister(reg) => {
+            Value::RegisterPointer(reg) => {
                 let addr = processor.get_register(reg);
                 processor.memory[addr]
             }
-            Value::AfterRegister(reg) => {
+            Value::RegisterPointerOffset(reg) => {
                 let addr = processor.get_register(reg) + processor.peek_next_word();
                 processor.memory[addr]
             }
@@ -160,7 +160,7 @@ impl Instruction {
                 let addr = processor.get_register(SP) + processor.peek_next_word();
                 processor.memory[addr]
             }
-            Value::AtNextWord => {
+            Value::NextWordPointer => {
                 let addr = processor.peek_next_word();
                 processor.memory[addr]
             }
@@ -298,11 +298,11 @@ impl Instruction {
                 Value::Register(reg) => {
                     processor.registers[reg as usize] = new_value;
                 }
-                Value::AtRegister(reg) => {
+                Value::RegisterPointer(reg) => {
                     let addr = processor.get_register(reg);
                     processor.memory[addr] = new_value;
                 }
-                Value::AfterRegister(reg) => {}
+                Value::RegisterPointerOffset(reg) => {}
                 Value::Push | Value::Pop => {
                     // B is always PUSH
                     let addr = processor.get_register(SP);
@@ -310,7 +310,7 @@ impl Instruction {
                 }
                 Value::Peek => {}
                 Value::Pick => {}
-                Value::AtNextWord => {}
+                Value::NextWordPointer => {}
                 Value::NextWord => {}
                 Value::Literal(literal) => {}
             }
@@ -322,14 +322,14 @@ impl Instruction {
         let addr = processor.get_register(PC);
         let Instruction { op, b, a } = processor.memory.get_instruction(addr);
         match b {
-            Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+            Value::RegisterPointerOffset(_) | Value::NextWordPointer | Value::NextWord => {
                 processor.inc(PC);
                 processor.cycle_wait += 1;
             }
             _ => {}
         }
         match a {
-            Value::AfterRegister(_) | Value::AtNextWord | Value::NextWord => {
+            Value::RegisterPointerOffset(_) | Value::NextWordPointer | Value::NextWord => {
                 processor.inc(PC);
                 processor.cycle_wait += 1;
             }
@@ -350,13 +350,13 @@ impl Instruction {
 #[derive(Copy, Clone, Debug)]
 pub enum Value {
     Register(Register),
-    AtRegister(Register),
-    AfterRegister(Register),
+    RegisterPointer(Register),
+    RegisterPointerOffset(Register),
     Push,
     Pop,
     Peek,
     Pick,
-    AtNextWord,
+    NextWordPointer,
     NextWord,
     Literal(u16),
 }
@@ -378,15 +378,15 @@ impl From<u16> for Value {
     fn from(value: u16) -> Value {
         match value {
             0x00..=0x07 => Value::Register(Register::from(value)),
-            0x08..=0x0f => Value::AtRegister(Register::from(value - 0x08)),
-            0x10..=0x17 => Value::AtRegister(Register::from(value - 0x10)),
+            0x08..=0x0f => Value::RegisterPointer(Register::from(value - 0x08)),
+            0x10..=0x17 => Value::RegisterPointer(Register::from(value - 0x10)),
             0x18 => Value::Push,
             0x19 => Value::Peek,
             0x1A => Value::Pick,
             0x1B => Value::Register(Register::SP),
             0x1C => Value::Register(Register::PC),
-            0x1D => Value::Register(Register::PC),
-            0x1E => Value::AtNextWord,
+            0x1D => Value::Register(Register::EX),
+            0x1E => Value::NextWordPointer,
             0x1F => Value::NextWord,
             0x20..=0x3f => Value::Literal(value - 0x21),
             _ => panic!("Invalid value code: {}", value),
@@ -398,12 +398,12 @@ impl From<Value> for u16 {
         match value {
             Value::Register(reg) if (reg as u16) < 0x08 => reg as u16,
             Value::Register(reg) => reg as u16 - 0x08 + 0x1B,
-            Value::AtRegister(reg) => reg as u16 + 0x08,
-            Value::AfterRegister(reg) => reg as u16 + 0x10,
+            Value::RegisterPointer(reg) => reg as u16 + 0x08,
+            Value::RegisterPointerOffset(reg) => reg as u16 + 0x10,
             Value::Push | Value::Pop => 0x18,
             Value::Peek => 0x19,
             Value::Pick => 0x1A,
-            Value::AtNextWord => 0x1E,
+            Value::NextWordPointer => 0x1E,
             Value::NextWord => 0x1F,
             Value::Literal(literal) if literal > 0x1E => 0x1F,
             Value::Literal(literal) => literal + 0x21,
