@@ -287,6 +287,60 @@ impl Instruction {
                 }
                 0
             }
+            IFE => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b != a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
+            IFN => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b == a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
+            IFG => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b <= a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
+            IFA => {
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+
+                setter = false;
+                processor.cycle_wait += 1;
+                if signed_b <= signed_a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
+            IFL => {
+                setter = false;
+                processor.cycle_wait += 1;
+                if b >= a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
+            IFU => {
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+
+                setter = false;
+                processor.cycle_wait += 1;
+                if signed_b >= signed_a {
+                    self.condition_failure(processor);
+                }
+                0
+            }
             _ => panic!("Invalid op code {}", self.op),
         };
 

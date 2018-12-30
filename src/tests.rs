@@ -579,3 +579,133 @@ fn ifc_register_with_literal_when_false() {
     assert_eq!(machine.get_register(X), 0x000C);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
+
+#[test]
+fn ife_register_with_literal_when_true() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x03));
+    program.add(IFE, Value::Register(A), Value::Literal(0x03));
+    program.add(SET, Value::Register(C), Value::NextWord);
+    program.add_word(0xBEEF);
+    program.add(SET, Value::Register(X), Value::Literal(0x0C));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set A
+    machine.tick();
+    // Run conditional - IFE - requires 2 cycles
+    assert_eq!(machine.get_register(PC), 0x0001);
+    machine.tick();
+    assert_eq!(machine.cycle, 2);
+    machine.tick();
+    assert_eq!(machine.cycle, 3);
+
+    assert_eq!(machine.get_register(PC), 0x0002);
+
+    // Run next instruction - SET
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.get_register(PC), 0x0004);
+
+    assert_eq!(machine.get_register(A), 0x0003);
+    assert_eq!(machine.get_register(C), 0xBEEF);
+    assert_eq!(machine.get_register(X), 0x0000);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn ife_register_with_literal_when_false() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x03));
+    program.add(IFE, Value::Register(A), Value::Literal(0x02));
+    program.add(SET, Value::Register(C), Value::NextWord);
+    program.add_word(0xBEEF);
+    program.add(SET, Value::Register(X), Value::Literal(0x0C));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set A
+    machine.tick();
+    // Run conditional - IFE - requires 2 cycles
+    assert_eq!(machine.get_register(PC), 0x0001);
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(PC), 0x0004);
+
+    // Run next instruction - SET
+    machine.tick();
+    assert_eq!(machine.get_register(PC), 0x0005);
+
+    assert_eq!(machine.get_register(A), 0x0003);
+    assert_eq!(machine.get_register(C), 0x0000);
+    assert_eq!(machine.get_register(X), 0x000C);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn ifn_register_with_literal_when_true() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x03));
+    program.add(IFN, Value::Register(A), Value::Literal(0x02));
+    program.add(SET, Value::Register(C), Value::NextWord);
+    program.add_word(0xBEEF);
+    program.add(SET, Value::Register(X), Value::Literal(0x0C));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set A
+    machine.tick();
+    // Run conditional - IFN - requires 2 cycles
+    assert_eq!(machine.get_register(PC), 0x0001);
+    machine.tick();
+    assert_eq!(machine.cycle, 2);
+    machine.tick();
+    assert_eq!(machine.cycle, 3);
+
+    assert_eq!(machine.get_register(PC), 0x0002);
+
+    // Run next instruction - SET
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.get_register(PC), 0x0004);
+
+    assert_eq!(machine.get_register(A), 0x0003);
+    assert_eq!(machine.get_register(C), 0xBEEF);
+    assert_eq!(machine.get_register(X), 0x0000);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn ifn_register_with_literal_when_false() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x03));
+    program.add(IFN, Value::Register(A), Value::Literal(0x03));
+    program.add(SET, Value::Register(C), Value::NextWord);
+    program.add_word(0xBEEF);
+    program.add(SET, Value::Register(X), Value::Literal(0x0C));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set A
+    machine.tick();
+    // Run conditional - IFN - requires 2 cycles
+    assert_eq!(machine.get_register(PC), 0x0001);
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(PC), 0x0004);
+
+    // Run next instruction - SET
+    machine.tick();
+    assert_eq!(machine.get_register(PC), 0x0005);
+
+    assert_eq!(machine.get_register(A), 0x0003);
+    assert_eq!(machine.get_register(C), 0x0000);
+    assert_eq!(machine.get_register(X), 0x000C);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
