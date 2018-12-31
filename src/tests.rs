@@ -1204,3 +1204,33 @@ fn std_register_with_literal() {
     assert_eq!(machine.get_register(PC), 0x0005);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
+
+#[test]
+fn iag_with_register() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    machine.set_register(IA, 0x1234);
+    program.add(SPL, Value::OpCode(IAG), Value::Register(A));
+    machine.memory.load_program(0x0000, &program);
+
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x1234);
+    assert_eq!(machine.get_register(IA), 0x1234);
+    assert_eq!(machine.get_register(PC), 0x0001);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn ias_with_register() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    machine.set_register(A, 0x1234);
+    program.add(SPL, Value::OpCode(IAS), Value::Register(A));
+    machine.memory.load_program(0x0000, &program);
+
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x1234);
+    assert_eq!(machine.get_register(IA), 0x1234);
+    assert_eq!(machine.get_register(PC), 0x0001);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}

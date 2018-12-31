@@ -40,17 +40,25 @@ pub struct Instruction {
     a: Value,
 }
 
+impl From<u16> for Instruction {
+    fn from(word: u16) -> Instruction {
+        let op = word & 0b0000000000011111;
+        let b = (word & 0b0000001111100000) >> 5;
+        let a = (word & 0b1111110000000000) >> 10;
+
+        // Specials
+        if op == 0x00 {
+            Instruction::new(SPL, Value::OpCode(b), Value::from(a))
+        }
+        else {
+            Instruction::new(op as OpCode, Value::from(b), Value::from(a))
+        }
+    }
+}
+
 impl Instruction {
     pub fn new(op: OpCode, b: Value, a: Value) -> Instruction {
         Instruction { op, b, a }
-    }
-
-    pub fn new_from_u16(op: u16, b: u16, a: u16) -> Instruction {
-        Instruction {
-            op: op as OpCode,
-            b: Value::from(b),
-            a: Value::from(a),
-        }
     }
 
     pub fn words(&self) -> Vec<u16> {
@@ -77,7 +85,7 @@ impl Instruction {
         let a = self.get_a(processor);
         match self.op {
             // Specials
-            0x00 => {}
+            0x00 => self.execute_special(processor, a),
 
             // Setters
             0x01..=0x0F | 0x1A..=0x1F => self.set_b(processor, a),
@@ -87,6 +95,28 @@ impl Instruction {
 
             // Bad
             _ => panic!("Invalid op code {}", self.op),
+        }
+    }
+
+    pub fn execute_special(&self, processor: &mut Processor, a: u16) {
+        let op = self.peek_b(processor);
+        match op {
+            JSR => {}
+            INT => {}
+            IAG => {
+                let value = processor.get_register(IA);
+                self.set_value(processor, self.a, value);
+            }
+            IAS => {
+                let value = self.get_a(processor);
+                processor.set_register(IA, value);
+            }
+            RFI => {}
+            IAQ => {}
+            HWN => {}
+            HWQ => {}
+            HWI => {}
+            _ => panic!("Invalid special op code {}", op)
         }
     }
 
@@ -116,6 +146,7 @@ impl Instruction {
             }
             Value::NextWord => processor.next_word(),
             Value::Literal(literal) => literal,
+            Value::OpCode(op) => op,
         }
     }
 
@@ -147,6 +178,7 @@ impl Instruction {
             }
             Value::NextWord => processor.next_word(),
             Value::Literal(literal) => literal,
+            Value::OpCode(op) => op,
         }
     }
 
@@ -178,6 +210,7 @@ impl Instruction {
             }
             Value::NextWord => processor.peek_next_word(),
             Value::Literal(literal) => literal,
+            Value::OpCode(op) => op,
         }
     }
 
@@ -323,26 +356,30 @@ impl Instruction {
 
         processor.set_register(EX, ex);
 
-        // Write to `b`
-        match self.b {
+        self.set_value(processor, self.b, new_value);
+    }
+
+    pub fn set_value(&self, processor: &mut Processor, target: Value, value: u16) {
+        match target {
             Value::Register(reg) => {
-                processor.registers[reg as usize] = new_value;
+                processor.registers[reg as usize] = value;
             }
             Value::RegisterPointer(reg) => {
                 let addr = processor.get_register(reg);
-                processor.memory[addr] = new_value;
+                processor.memory[addr] = value;
             }
             Value::RegisterPointerOffset(reg) => {}
             Value::Push | Value::Pop => {
                 // B is always PUSH
                 let addr = processor.get_register(SP);
-                processor.memory[addr] = new_value;
+                processor.memory[addr] = value;
             }
             Value::Peek => {}
             Value::Pick => {}
             Value::NextWordPointer => {}
             Value::NextWord => {}
-            Value::Literal(literal) => {}
+            Value::Literal(_) => {}
+            Value::OpCode(_) => {},
         }
     }
 
@@ -449,6 +486,7 @@ pub enum Value {
     NextWordPointer,
     NextWord,
     Literal(u16),
+    OpCode(OpCode),
 }
 impl Value {
     pub fn to_u16(&self) -> u16 {
@@ -497,6 +535,7 @@ impl From<Value> for u16 {
             Value::NextWord => 0x1F,
             Value::Literal(literal) if literal > 0x1E => 0x1F,
             Value::Literal(literal) => literal + 0x21,
+            Value::OpCode(op) => op,
         }
     }
 }
@@ -641,12 +680,7 @@ impl Memory {
     }
 
     pub fn get_instruction(&self, addr: u16) -> Instruction {
-        let word = self[addr];
-        let op = word & 0b0000000000011111;
-        let b = (word & 0b0000001111100000) >> 5;
-        let a = (word & 0b1111110000000000) >> 10;
-
-        Instruction::new_from_u16(op, b, a)
+        Instruction::from(self[addr])
     }
 
     pub fn load_program(&mut self, addr: u16, program: &Program) {
