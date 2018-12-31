@@ -1,9 +1,14 @@
 #[cfg(test)]
 mod tests;
 
+mod monitor;
+use downcast_rs::{impl_downcast, Downcast};
+pub use self::monitor::Monitor;
 mod opcodes;
 use self::opcodes::*;
 use std::mem;
+use std::rc::Rc;
+use std::cell::{RefCell, Ref};
 use std::collections::VecDeque;
 use std::ops::{Index, IndexMut};
 
@@ -15,16 +20,14 @@ fn to_unsigned(val: i16) -> u16 {
     unsafe { mem::transmute(val) }
 }
 
-pub struct Hardware {
-    id: u32,
-    version: u16,
-    manufacturer: u32,
-}
-
-impl Hardware {
-    pub fn trigger_interrupt(&self) {
+pub trait HardwareDevice: Downcast {
+    fn id(&self) -> u32;
+    fn version(&self) -> u16;
+    fn manufacturer(&self) -> u32;
+    fn handle_interrupt(&mut self, processor: &Processor) {
     }
 }
+impl_downcast!(HardwareDevice);
 
 pub struct Program(Vec<u16>);
 impl Program {
@@ -155,17 +158,22 @@ impl Instruction {
             }
             HWQ => {
                 processor.cycle_wait += 3;
-                if let Some(hardware) = processor.get_hardware(a) {
-                    let a = (hardware.id & 0xFFFF) as u16;
-                    let b = (hardware.id >> 16 & 0xFFFF) as u16;
-                    let c = hardware.version;
-                    let x = (hardware.manufacturer & 0xFFFF) as u16;
-                    let y = (hardware.manufacturer >> 16 & 0xFFFF) as u16;
-                    processor.set_register(A, a);
-                    processor.set_register(B, b);
-                    processor.set_register(C, c);
-                    processor.set_register(X, x);
-                    processor.set_register(Y, y);
+                if let Some(rc) = processor.get_hardware(a) {
+                    if let Ok(hardware) = rc.try_borrow() {
+                        let a = (hardware.id() & 0xFFFF) as u16;
+                        let b = (hardware.id() >> 16 & 0xFFFF) as u16;
+                        let c = hardware.version();
+                        let x = (hardware.manufacturer() & 0xFFFF) as u16;
+                        let y = (hardware.manufacturer() >> 16 & 0xFFFF) as u16;
+                        processor.set_register(A, a);
+                        processor.set_register(B, b);
+                        processor.set_register(C, c);
+                        processor.set_register(X, x);
+                        processor.set_register(Y, y);
+                    }
+                    else {
+                        panic!("TODO");
+                    }
                 }
                 else {
                     processor.set_register(A, 0x00);
@@ -177,8 +185,10 @@ impl Instruction {
             }
             HWI => {
                 processor.cycle_wait += 3;
-                if let Some(hardware) = processor.get_hardware(a) {
-                    hardware.trigger_interrupt();
+                if let Some(rc) = processor.get_hardware(a) {
+                    if let Ok(mut hardware) = rc.try_borrow_mut() {
+                        hardware.handle_interrupt(processor);
+                    }
                 }
             }
             _ => panic!("Invalid special op code {}", op)
@@ -636,11 +646,11 @@ pub struct Processor {
     memory: Memory,
     registers: [u16; 12],
     cycle_wait: u8,
-    cycle: u16,
+    cycle: usize,
     interrupt_queue: VecDeque<u16>,
     is_queuing_interrupts: bool,
     is_on_fire: bool,
-    hardware: Vec<Hardware>,
+    hardware: Vec<Rc<RefCell<dyn HardwareDevice>>>,
 }
 
 impl Processor {
@@ -662,7 +672,7 @@ impl Processor {
             return;
         }
 
-        self.cycle += 1;
+        self.cycle = self.cycle.wrapping_add(1);
         if self.cycle_wait > 0 {
             self.cycle_wait -= 1;
             return;
@@ -672,12 +682,25 @@ impl Processor {
         self.process_interrupt_queue();
     }
 
-    pub fn connect_hardware(&mut self, hardware: Hardware) {
-        self.hardware.push(hardware);
+    pub fn get_memory(&self, addr: u16) -> u16 {
+        self.memory[addr]
     }
 
-    pub fn get_hardware(&mut self, index: u16) -> Option<&Hardware> {
-        self.hardware.get(index as usize)
+    pub fn set_memory(&mut self, addr: u16, value: u16) {
+        self.memory[addr] = value;
+    }
+
+    pub fn connect_hardware<T: 'static + HardwareDevice>(&mut self, hardware: T) {
+        self.hardware.push(Rc::new(RefCell::new(hardware)));
+    }
+
+    pub fn get_hardware(&self, index: u16) -> Option<Rc<RefCell<dyn HardwareDevice>>> {
+        if let Some(rc) = self.hardware.get(index as usize) {
+            Some(rc.clone())
+        }
+        else {
+            None
+        }
     }
 
     pub fn execute_next(&mut self) {
