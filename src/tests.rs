@@ -1244,3 +1244,50 @@ fn ias_with_register() {
     assert_eq!(machine.get_register(PC), 0x0001);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
+
+// Interrupts
+#[test]
+fn trigger_a_software_interrupt() {
+    let mut machine = Processor::new();
+
+    // Small program that'll be called when an interrupt triggers
+    let mut interrupt_handler = Program::new();
+    interrupt_handler.add(SET, Value::Register(B), Value::Literal(0x06));
+    interrupt_handler.add(ADD, Value::Register(B), Value::Register(A));
+    interrupt_handler.add(SPL, Value::OpCode(RFI), Value::Literal(0x00));
+    machine.memory.load_program(0x4000, &interrupt_handler);
+
+    // Program to trigger the interrupt
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x0A));
+    program.add(SPL, Value::OpCode(IAS), Value::NextWord);
+    program.add_word(0x4000); // Where the handler lives
+    program.add(SPL, Value::OpCode(INT), Value::Literal(0x03));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set A
+    machine.tick();
+    // Set IA
+    machine.tick();
+    assert_eq!(machine.get_register(IA), 0x4000);
+    // Trigger interrupt
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(PC), 0x4000);
+    assert_eq!(machine.get_register(A), 0x03);
+
+    // Set B
+    machine.tick();
+    // Add A (interrupt message)
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(B), 0x09);
+    // Return
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(PC), 0x04);
+    assert_eq!(machine.get_register(A), 0x0A);
+}

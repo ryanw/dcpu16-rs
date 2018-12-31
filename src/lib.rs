@@ -4,6 +4,7 @@ mod tests;
 mod opcodes;
 use self::opcodes::*;
 use std::mem;
+use std::collections::VecDeque;
 use std::ops::{Index, IndexMut};
 
 fn to_signed(val: u16) -> i16 {
@@ -82,16 +83,21 @@ impl Instruction {
     }
 
     pub fn execute(&self, processor: &mut Processor) {
-        let a = self.get_a(processor);
         match self.op {
             // Specials
             0x00 => self.execute_special(processor),
 
             // Setters
-            0x01..=0x0F | 0x1A..=0x1F => self.set_b(processor, a),
+            0x01..=0x0F | 0x1A..=0x1F => {
+                let a = self.get_a(processor);
+                self.set_b(processor, a);
+            }
 
             // Conditionals
-            0x10..=0x17 => self.test_condition(processor, a),
+            0x10..=0x17 => {
+                let a = self.get_a(processor);
+                self.test_condition(processor, a);
+            }
 
             // Bad
             _ => panic!("Invalid op code {}", self.op),
@@ -99,31 +105,37 @@ impl Instruction {
     }
 
     pub fn execute_special(&self, processor: &mut Processor) {
+        let a = self.get_a(processor);
         let op = self.peek_b(processor);
         match op {
             JSR => {
                 processor.cycle_wait += 2;
-                let a = self.get_a(processor);
                 let pc = processor.get_register(PC);
                 processor.push(pc);
                 processor.set_register(PC, a);
             }
             INT => {
                 processor.cycle_wait += 3;
+                processor.trigger_interrupt(a);
             }
             IAG => {
                 let value = processor.get_register(IA);
                 self.set_value(processor, self.a, value);
             }
             IAS => {
-                let a = self.get_a(processor);
                 processor.set_register(IA, a);
             }
             RFI => {
                 processor.cycle_wait += 2;
+                processor.return_from_interrupt();
             }
             IAQ => {
                 processor.cycle_wait += 1;
+                if a == 0 {
+                    processor.is_queuing_interrupts = false;
+                } else {
+                    processor.is_queuing_interrupts = true;
+                }
             }
             HWN => {
                 processor.cycle_wait += 1;
@@ -590,6 +602,9 @@ pub struct Processor {
     registers: [u16; 12],
     cycle_wait: u8,
     cycle: u16,
+    interrupt_queue: VecDeque<u16>,
+    is_queuing_interrupts: bool,
+    is_on_fire: bool,
 }
 
 impl Processor {
@@ -599,10 +614,17 @@ impl Processor {
             registers: [0; 12],
             cycle_wait: 0,
             cycle: 0,
+            is_queuing_interrupts: false,
+            interrupt_queue: VecDeque::with_capacity(256),
+            is_on_fire: false,
         }
     }
 
     pub fn tick(&mut self) {
+        if self.is_on_fire {
+            return;
+        }
+
         self.cycle += 1;
         if self.cycle_wait > 0 {
             self.cycle_wait -= 1;
@@ -610,6 +632,7 @@ impl Processor {
         }
 
         self.execute_next();
+        self.process_interrupt_queue();
     }
 
     pub fn execute_next(&mut self) {
@@ -617,6 +640,57 @@ impl Processor {
         let instruction = self.memory.get_instruction(addr);
         self.inc(PC);
         instruction.execute(self);
+    }
+
+    pub fn process_interrupt_queue(&mut self) {
+        if self.is_queuing_interrupts {
+            return;
+        }
+        if let Some(message) = self.interrupt_queue.pop_front() {
+            self.handle_interrupt(message);
+        }
+    }
+
+    pub fn handle_interrupt(&mut self, message: u16) {
+        let handler_addr = self.get_register(IA);
+
+        self.is_queuing_interrupts = true;
+        let pc = self.get_register(PC);
+        let a = self.get_register(A);
+        self.push(pc);
+        self.push(a);
+        self.set_register(PC, handler_addr);
+        self.set_register(A, message);
+    }
+
+    pub fn trigger_interrupt(&mut self, message: u16) {
+        if self.get_register(IA) == 0 {
+            return;
+        }
+
+        if self.is_queuing_interrupts {
+            self.queue_interrupt(message);
+            return;
+        }
+
+        self.handle_interrupt(message);
+    }
+
+    pub fn return_from_interrupt(&mut self) {
+        self.is_queuing_interrupts = false;
+        let a = self.pop();
+        let pc = self.pop();
+        self.set_register(A, a);
+        self.set_register(PC, pc);
+    }
+
+    pub fn queue_interrupt(&mut self, message: u16) {
+        if self.interrupt_queue.len() >= 256 {
+            self.is_on_fire = true;
+            return;
+        }
+
+        self.interrupt_queue.push_back(message);
     }
 
     pub fn next_word(&mut self) -> u16 {
@@ -646,8 +720,8 @@ impl Processor {
     }
 
     pub fn pop(&mut self) -> u16 {
-        let addr = self.get_register(SP);
         self.inc(SP);
+        let addr = self.get_register(SP);
         self.memory[addr]
     }
 
