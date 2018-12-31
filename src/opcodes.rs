@@ -28,3 +28,14 @@ pub const ADX: OpCode = 0x001A;
 pub const SBX: OpCode = 0x001B;
 pub const STI: OpCode = 0x001E;
 pub const STD: OpCode = 0x001F;
+
+
+pub const JSR: OpCode = 0x0001 << 5;
+pub const INT: OpCode = 0x0008 << 5;
+pub const IAG: OpCode = 0x0009 << 5;
+pub const IAS: OpCode = 0x000A << 5;
+pub const RFI: OpCode = 0x000B << 5;
+pub const IAQ: OpCode = 0x000C << 5;
+pub const HWN: OpCode = 0x0010 << 5;
+pub const HWQ: OpCode = 0x0011 << 5;
+pub const HWI: OpCode = 0x0002 << 5;

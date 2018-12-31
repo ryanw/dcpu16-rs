@@ -75,7 +75,19 @@ impl Instruction {
 
     pub fn execute(&self, processor: &mut Processor) {
         let a = self.get_a(processor);
-        self.set_b(processor, a);
+        match self.op {
+            // Specials
+            0x00 => {}
+
+            // Setters
+            0x01..=0x0F | 0x1A..=0x1F => self.set_b(processor, a),
+
+            // Conditionals
+            0x10..=0x17 => self.test_condition(processor, a),
+
+            // Bad
+            _ => panic!("Invalid op code {}", self.op),
+        }
     }
 
     pub fn get_a(&self, processor: &mut Processor) -> u16 {
@@ -134,7 +146,7 @@ impl Instruction {
                 processor.memory[addr]
             }
             Value::NextWord => processor.next_word(),
-            Value::Literal(literal) => literal + 0x21,
+            Value::Literal(literal) => literal,
         }
     }
 
@@ -165,7 +177,7 @@ impl Instruction {
                 processor.memory[addr]
             }
             Value::NextWord => processor.peek_next_word(),
-            Value::Literal(literal) => literal + 0x21,
+            Value::Literal(literal) => literal,
         }
     }
 
@@ -173,7 +185,6 @@ impl Instruction {
         // Get current `b` value to apply the operation to
         let b = self.peek_b(processor);
         let mut ex = processor.get_register(EX);
-        let mut setter = true;
         let new_value = match self.op {
             SET => a,
             ADD => {
@@ -271,76 +282,6 @@ impl Instruction {
                 ex = (((b as u32) << a) >> 16) as u16;
                 b << a
             }
-            IFB => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b & a == 0 {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFC => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b & a != 0 {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFE => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b != a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFN => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b == a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFG => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b <= a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFA => {
-                let signed_b = to_signed(b);
-                let signed_a = to_signed(a);
-
-                setter = false;
-                processor.cycle_wait += 1;
-                if signed_b <= signed_a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFL => {
-                setter = false;
-                processor.cycle_wait += 1;
-                if b >= a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
-            IFU => {
-                let signed_b = to_signed(b);
-                let signed_a = to_signed(a);
-
-                setter = false;
-                processor.cycle_wait += 1;
-                if signed_b >= signed_a {
-                    self.condition_failure(processor);
-                }
-                0
-            }
             ADX => {
                 processor.cycle_wait += 2;
                 let (value1, overflowed1) = b.overflowing_add(a);
@@ -380,31 +321,90 @@ impl Instruction {
             _ => panic!("Invalid op code {}", self.op),
         };
 
-        if setter {
-            processor.set_register(EX, ex);
+        processor.set_register(EX, ex);
 
-            // Write to `b`
-            match self.b {
-                Value::Register(reg) => {
-                    processor.registers[reg as usize] = new_value;
-                }
-                Value::RegisterPointer(reg) => {
-                    let addr = processor.get_register(reg);
-                    processor.memory[addr] = new_value;
-                }
-                Value::RegisterPointerOffset(reg) => {}
-                Value::Push | Value::Pop => {
-                    // B is always PUSH
-                    let addr = processor.get_register(SP);
-                    processor.memory[addr] = new_value;
-                }
-                Value::Peek => {}
-                Value::Pick => {}
-                Value::NextWordPointer => {}
-                Value::NextWord => {}
-                Value::Literal(literal) => {}
+        // Write to `b`
+        match self.b {
+            Value::Register(reg) => {
+                processor.registers[reg as usize] = new_value;
             }
+            Value::RegisterPointer(reg) => {
+                let addr = processor.get_register(reg);
+                processor.memory[addr] = new_value;
+            }
+            Value::RegisterPointerOffset(reg) => {}
+            Value::Push | Value::Pop => {
+                // B is always PUSH
+                let addr = processor.get_register(SP);
+                processor.memory[addr] = new_value;
+            }
+            Value::Peek => {}
+            Value::Pick => {}
+            Value::NextWordPointer => {}
+            Value::NextWord => {}
+            Value::Literal(literal) => {}
         }
+    }
+
+    pub fn test_condition(&self, processor: &mut Processor, a: u16) {
+        let b = self.get_b(processor);
+        match self.op {
+            IFB => {
+                processor.cycle_wait += 1;
+                if b & a == 0 {
+                    self.condition_failure(processor);
+                }
+            }
+            IFC => {
+                processor.cycle_wait += 1;
+                if b & a != 0 {
+                    self.condition_failure(processor);
+                }
+            }
+            IFE => {
+                processor.cycle_wait += 1;
+                if b != a {
+                    self.condition_failure(processor);
+                }
+            }
+            IFN => {
+                processor.cycle_wait += 1;
+                if b == a {
+                    self.condition_failure(processor);
+                }
+            }
+            IFG => {
+                processor.cycle_wait += 1;
+                if b <= a {
+                    self.condition_failure(processor);
+                }
+            }
+            IFA => {
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+
+                processor.cycle_wait += 1;
+                if signed_b <= signed_a {
+                    self.condition_failure(processor);
+                }
+            }
+            IFL => {
+                processor.cycle_wait += 1;
+                if b >= a {
+                    self.condition_failure(processor);
+                }
+            }
+            IFU => {
+                let signed_b = to_signed(b);
+                let signed_a = to_signed(a);
+
+                processor.cycle_wait += 1;
+                if signed_b >= signed_a {
+                    self.condition_failure(processor);
+                }
+            }
+            _ => panic!("Invalid op code {}", self.op),
+        };
     }
 
     pub fn condition_failure(&self, processor: &mut Processor) {
