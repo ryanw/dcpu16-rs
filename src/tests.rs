@@ -1,9 +1,5 @@
 use super::*;
 
-fn to_signed(val: u16) -> i16 {
-    unsafe { mem::transmute(val) }
-}
-
 fn to_unsigned(val: i16) -> u16 {
     unsafe { mem::transmute(val) }
 }
@@ -1203,6 +1199,20 @@ fn std_register_with_literal() {
 
     assert_eq!(machine.get_register(PC), 0x0005);
     assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn jsr_with_literal() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SPL, Value::OpCode(JSR), Value::Literal(0x04));
+    machine.memory.load_program(0x0000, &program);
+
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(SP), 0xFFFF);
+    assert_eq!(machine.get_register(PC), 0x04);
 }
 
 #[test]

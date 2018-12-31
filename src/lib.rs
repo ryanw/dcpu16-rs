@@ -85,7 +85,7 @@ impl Instruction {
         let a = self.get_a(processor);
         match self.op {
             // Specials
-            0x00 => self.execute_special(processor, a),
+            0x00 => self.execute_special(processor),
 
             // Setters
             0x01..=0x0F | 0x1A..=0x1F => self.set_b(processor, a),
@@ -98,24 +98,42 @@ impl Instruction {
         }
     }
 
-    pub fn execute_special(&self, processor: &mut Processor, a: u16) {
+    pub fn execute_special(&self, processor: &mut Processor) {
         let op = self.peek_b(processor);
         match op {
-            JSR => {}
-            INT => {}
+            JSR => {
+                processor.cycle_wait += 2;
+                let a = self.get_a(processor);
+                let pc = processor.get_register(PC);
+                processor.push(pc);
+                processor.set_register(PC, a);
+            }
+            INT => {
+                processor.cycle_wait += 3;
+            }
             IAG => {
                 let value = processor.get_register(IA);
                 self.set_value(processor, self.a, value);
             }
             IAS => {
-                let value = self.get_a(processor);
-                processor.set_register(IA, value);
+                let a = self.get_a(processor);
+                processor.set_register(IA, a);
             }
-            RFI => {}
-            IAQ => {}
-            HWN => {}
-            HWQ => {}
-            HWI => {}
+            RFI => {
+                processor.cycle_wait += 2;
+            }
+            IAQ => {
+                processor.cycle_wait += 1;
+            }
+            HWN => {
+                processor.cycle_wait += 1;
+            }
+            HWQ => {
+                processor.cycle_wait += 3;
+            }
+            HWI => {
+                processor.cycle_wait += 3;
+            }
             _ => panic!("Invalid special op code {}", op)
         }
     }
