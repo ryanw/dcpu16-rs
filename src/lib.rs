@@ -15,6 +15,17 @@ fn to_unsigned(val: i16) -> u16 {
     unsafe { mem::transmute(val) }
 }
 
+pub struct Hardware {
+    id: u32,
+    version: u16,
+    manufacturer: u32,
+}
+
+impl Hardware {
+    pub fn trigger_interrupt(&self) {
+    }
+}
+
 pub struct Program(Vec<u16>);
 impl Program {
     pub fn new() -> Program {
@@ -139,12 +150,36 @@ impl Instruction {
             }
             HWN => {
                 processor.cycle_wait += 1;
+                let hardware_count = processor.hardware.len() as u16;
+                self.set_value(processor, self.a, hardware_count);
             }
             HWQ => {
                 processor.cycle_wait += 3;
+                if let Some(hardware) = processor.get_hardware(a) {
+                    let a = (hardware.id & 0xFFFF) as u16;
+                    let b = (hardware.id >> 16 & 0xFFFF) as u16;
+                    let c = hardware.version;
+                    let x = (hardware.manufacturer & 0xFFFF) as u16;
+                    let y = (hardware.manufacturer >> 16 & 0xFFFF) as u16;
+                    processor.set_register(A, a);
+                    processor.set_register(B, b);
+                    processor.set_register(C, c);
+                    processor.set_register(X, x);
+                    processor.set_register(Y, y);
+                }
+                else {
+                    processor.set_register(A, 0x00);
+                    processor.set_register(B, 0x00);
+                    processor.set_register(C, 0x00);
+                    processor.set_register(X, 0x00);
+                    processor.set_register(Y, 0x00);
+                }
             }
             HWI => {
                 processor.cycle_wait += 3;
+                if let Some(hardware) = processor.get_hardware(a) {
+                    hardware.trigger_interrupt();
+                }
             }
             _ => panic!("Invalid special op code {}", op)
         }
@@ -605,6 +640,7 @@ pub struct Processor {
     interrupt_queue: VecDeque<u16>,
     is_queuing_interrupts: bool,
     is_on_fire: bool,
+    hardware: Vec<Hardware>,
 }
 
 impl Processor {
@@ -617,6 +653,7 @@ impl Processor {
             is_queuing_interrupts: false,
             interrupt_queue: VecDeque::with_capacity(256),
             is_on_fire: false,
+            hardware: vec![],
         }
     }
 
@@ -633,6 +670,14 @@ impl Processor {
 
         self.execute_next();
         self.process_interrupt_queue();
+    }
+
+    pub fn connect_hardware(&mut self, hardware: Hardware) {
+        self.hardware.push(hardware);
+    }
+
+    pub fn get_hardware(&mut self, index: u16) -> Option<&Hardware> {
+        self.hardware.get(index as usize)
     }
 
     pub fn execute_next(&mut self) {
