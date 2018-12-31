@@ -998,3 +998,209 @@ fn ifu_register_with_literal_when_false() {
     assert_eq!(machine.get_register(X), 0x000C);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
+
+
+#[test]
+fn adx_register_with_literal() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+
+    // Set A,B to 0x0F0A2C2A
+    program.add(SET, Value::Register(A), Value::NextWord);
+    program.add_word(0x0F0A);
+    program.add(SET, Value::Register(B), Value::NextWord);
+    program.add_word(0x2C2A);
+
+    // Set X,Y to 0x000186A0
+    program.add(SET, Value::Register(X), Value::NextWord);
+    program.add_word(0xFF03);
+    program.add(SET, Value::Register(Y), Value::NextWord);
+    program.add_word(0x86A0);
+
+    // AB + XY = 0xBB2CA
+
+    // Add AB to XY
+    program.add(ADD, Value::Register(B), Value::Register(Y));
+    program.add(ADX, Value::Register(A), Value::Register(X));
+
+
+    machine.memory.load_program(0x0000, &program);
+
+
+    // Set A
+    machine.tick();
+    machine.tick();
+    // Set B
+    machine.tick();
+    machine.tick();
+
+    // Set X
+    machine.tick();
+    machine.tick();
+    // Set Y
+    machine.tick();
+    machine.tick();
+
+
+    // Add lows
+    machine.tick();
+    machine.tick();
+
+    // ADX highs
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(A), 0x0E0D);
+    assert_eq!(machine.get_register(B), 0xB2CA);
+    assert_eq!(machine.get_register(X), 0xFF03);
+    assert_eq!(machine.get_register(Y), 0x86A0);
+    assert_eq!(machine.get_register(PC), 0x000A);
+    assert_eq!(machine.get_register(EX), 0x0001);
+}
+
+#[test]
+fn sbx_register_with_literal() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+
+    // Set A,B to 0x0F0A2C2A
+    program.add(SET, Value::Register(A), Value::NextWord);
+    program.add_word(0x0F0A);
+    program.add(SET, Value::Register(B), Value::NextWord);
+    program.add_word(0x2C2A);
+
+
+    // Set X,Y to 0x000186A0
+    program.add(SET, Value::Register(X), Value::NextWord);
+    program.add_word(0xFF03);
+    program.add(SET, Value::Register(Y), Value::NextWord);
+    program.add_word(0x86A0);
+
+    // AB + XY = 0xBB2CA
+
+    // Add AB to XY
+    program.add(ADD, Value::Register(B), Value::Register(Y));
+    program.add(SBX, Value::Register(A), Value::Register(X));
+
+
+    machine.memory.load_program(0x0000, &program);
+
+
+    // Set A
+    machine.tick();
+    machine.tick();
+    // Set B
+    machine.tick();
+    machine.tick();
+
+    // Set X
+    machine.tick();
+    machine.tick();
+    // Set Y
+    machine.tick();
+    machine.tick();
+
+
+    // Add lows
+    machine.tick();
+    machine.tick();
+
+    // SBX highs
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(A), 0x1007);
+    assert_eq!(machine.get_register(B), 0xB2CA);
+    assert_eq!(machine.get_register(X), 0xFF03);
+    assert_eq!(machine.get_register(Y), 0x86A0);
+    assert_eq!(machine.get_register(PC), 0x000A);
+    assert_eq!(machine.get_register(EX), 0xFFFF);
+}
+
+#[test]
+fn sti_register_with_literal() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(I), Value::Literal(0x0003));
+    program.add(SET, Value::Register(J), Value::Literal(0x0005));
+    program.add(STI, Value::Register(A), Value::Literal(0x0001));
+    program.add(STI, Value::Register(A), Value::Literal(0x0004));
+    program.add(STI, Value::Register(A), Value::Literal(0x000B));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set I
+    machine.tick();
+    // Set J
+    machine.tick();
+    assert_eq!(machine.get_register(I), 0x0003);
+    assert_eq!(machine.get_register(J), 0x0005);
+
+    // STI 1
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x0001);
+    assert_eq!(machine.get_register(I), 0x0004);
+    assert_eq!(machine.get_register(J), 0x0006);
+    assert_eq!(machine.get_register(PC), 0x0003);
+    // STI 2
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x0004);
+    assert_eq!(machine.get_register(I), 0x0005);
+    assert_eq!(machine.get_register(J), 0x0007);
+    assert_eq!(machine.get_register(PC), 0x0004);
+    // STI 3
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x000B);
+    assert_eq!(machine.get_register(I), 0x0006);
+    assert_eq!(machine.get_register(J), 0x0008);
+
+    assert_eq!(machine.get_register(PC), 0x0005);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
+
+#[test]
+fn std_register_with_literal() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(I), Value::Literal(0x0003));
+    program.add(SET, Value::Register(J), Value::Literal(0x0005));
+    program.add(STD, Value::Register(A), Value::Literal(0x0001));
+    program.add(STD, Value::Register(A), Value::Literal(0x0004));
+    program.add(STD, Value::Register(A), Value::Literal(0x000B));
+    machine.memory.load_program(0x0000, &program);
+
+    // Set I
+    machine.tick();
+    // Set J
+    machine.tick();
+    assert_eq!(machine.get_register(I), 0x0003);
+    assert_eq!(machine.get_register(J), 0x0005);
+
+    // STD 1
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x0001);
+    assert_eq!(machine.get_register(I), 0x0002);
+    assert_eq!(machine.get_register(J), 0x0004);
+    assert_eq!(machine.get_register(PC), 0x0003);
+    // STD 2
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x0004);
+    assert_eq!(machine.get_register(I), 0x0001);
+    assert_eq!(machine.get_register(J), 0x0003);
+    assert_eq!(machine.get_register(PC), 0x0004);
+    // STD 3
+    machine.tick();
+    machine.tick();
+    assert_eq!(machine.get_register(A), 0x000B);
+    assert_eq!(machine.get_register(I), 0x0000);
+    assert_eq!(machine.get_register(J), 0x0002);
+
+    assert_eq!(machine.get_register(PC), 0x0005);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}

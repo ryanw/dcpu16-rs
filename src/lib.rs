@@ -341,6 +341,42 @@ impl Instruction {
                 }
                 0
             }
+            ADX => {
+                processor.cycle_wait += 2;
+                let (value1, overflowed1) = b.overflowing_add(a);
+                let (value2, overflowed2) = value1.overflowing_add(ex);
+                if overflowed1 || overflowed2 {
+                    ex = 0x0001;
+                }
+                else {
+                    ex = 0x0000;
+                }
+                value2
+            }
+            SBX => {
+                processor.cycle_wait += 2;
+                let (value1, overflowed1) = b.overflowing_sub(a);
+                let (value2, overflowed2) = value1.overflowing_add(ex);
+                if overflowed1 || overflowed2 {
+                    ex = 0xFFFF;
+                }
+                else {
+                    ex = 0x0000;
+                }
+                value2
+            }
+            STI => {
+                processor.cycle_wait += 1;
+                processor.inc(I);
+                processor.inc(J);
+                a
+            }
+            STD => {
+                processor.cycle_wait += 1;
+                processor.dec(I);
+                processor.dec(J);
+                a
+            }
             _ => panic!("Invalid op code {}", self.op),
         };
 
