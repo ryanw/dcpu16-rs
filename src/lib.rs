@@ -238,8 +238,7 @@ impl Instruction {
             }
             Value::Push | Value::Pop => {
                 // B is always PUSH
-                processor.inc(SP);
-                let addr = processor.get_register(SP);
+                let addr = processor.get_register(SP).wrapping_sub(1);
                 processor.memory[addr]
             }
             Value::Peek => processor.peek(),
@@ -271,7 +270,7 @@ impl Instruction {
             }
             Value::Push | Value::Pop => {
                 // B is always PUSH
-                let addr = processor.get_register(SP);
+                let addr = processor.get_register(SP).wrapping_sub(1);
                 processor.memory[addr]
             }
             Value::Peek => processor.peek(),
@@ -446,6 +445,7 @@ impl Instruction {
             Value::RegisterPointerOffset(reg) => {}
             Value::Push | Value::Pop => {
                 // B is always PUSH
+                processor.dec(SP);
                 let addr = processor.get_register(SP);
                 processor.memory[addr] = value;
             }
@@ -802,14 +802,14 @@ impl Processor {
     }
 
     pub fn push(&mut self, value: u16) {
-        let addr = self.get_register(SP);
         self.dec(SP);
+        let addr = self.get_register(SP);
         self.memory[addr] = value;
     }
 
     pub fn pop(&mut self) -> u16 {
-        self.inc(SP);
         let addr = self.get_register(SP);
+        self.inc(SP);
         self.memory[addr]
     }
 

@@ -1291,3 +1291,33 @@ fn trigger_a_software_interrupt() {
     assert_eq!(machine.get_register(PC), 0x04);
     assert_eq!(machine.get_register(A), 0x0A);
 }
+
+// Stack
+#[test]
+fn push_and_pop_the_stack() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x0A));
+    program.add(SET, Value::Push, Value::Literal(0x05));
+    program.add(SET, Value::Push, Value::Register(A));
+    program.add(SET, Value::Register(B), Value::Pop);
+    program.add(SET, Value::Register(C), Value::Pop);
+    machine.memory.load_program(0x0000, &program);
+
+    machine.tick(); // Set A
+    assert_eq!(machine.get_register(SP), 0x0000);
+    machine.tick(); // Push 0x05
+    assert_eq!(machine.get_register(SP), 0xFFFF);
+    machine.tick(); // Push A
+    assert_eq!(machine.get_register(SP), 0xFFFE);
+    machine.tick(); // Pop B
+    assert_eq!(machine.get_register(SP), 0xFFFF);
+    machine.tick(); // Pop C
+    assert_eq!(machine.get_register(SP), 0x0000);
+
+    assert_eq!(machine.get_register(A), 0x000A);
+    assert_eq!(machine.get_register(B), 0x000A);
+    assert_eq!(machine.get_register(C), 0x0005);
+    assert_eq!(machine.get_register(PC), 0x0005);
+    assert_eq!(machine.get_register(EX), 0x0000);
+}
