@@ -49,6 +49,7 @@ impl Program {
     }
 }
 
+#[derive(Debug)]
 pub struct Instruction {
     op: OpCode,
     b: Value,
@@ -442,7 +443,11 @@ impl Instruction {
                 let addr = processor.get_register(reg);
                 processor.memory[addr] = value;
             }
-            Value::RegisterPointerOffset(reg) => {}
+            Value::RegisterPointerOffset(reg) => {
+                let offset = processor.next_word();
+                let addr = processor.get_register(reg).wrapping_add(offset);
+                processor.memory[addr] = value;
+            }
             Value::Push | Value::Pop => {
                 // B is always PUSH
                 processor.dec(SP);
@@ -451,7 +456,10 @@ impl Instruction {
             }
             Value::Peek => {}
             Value::Pick => {}
-            Value::NextWordPointer => {}
+            Value::NextWordPointer => {
+                let addr = processor.next_word();
+                processor.set_memory(addr, value);
+            }
             Value::NextWord => {}
             Value::Literal(_) => {}
             Value::OpCode(_) => {},
@@ -523,6 +531,8 @@ impl Instruction {
         // Condition failed, skip next instruction
         let addr = processor.get_register(PC);
         let Instruction { op, b, a } = processor.memory.get_instruction(addr);
+
+        // Skip extra word in longer instructions
         match b {
             Value::RegisterPointerOffset(_) | Value::NextWordPointer | Value::NextWord => {
                 processor.inc(PC);
@@ -582,7 +592,7 @@ impl From<u16> for Value {
         match value {
             0x00..=0x07 => Value::Register(Register::from(value)),
             0x08..=0x0f => Value::RegisterPointer(Register::from(value - 0x08)),
-            0x10..=0x17 => Value::RegisterPointer(Register::from(value - 0x10)),
+            0x10..=0x17 => Value::RegisterPointerOffset(Register::from(value - 0x10)),
             0x18 => Value::Push,
             0x19 => Value::Peek,
             0x1A => Value::Pick,
@@ -591,7 +601,7 @@ impl From<u16> for Value {
             0x1D => Value::Register(Register::EX),
             0x1E => Value::NextWordPointer,
             0x1F => Value::NextWord,
-            0x20..=0x3f => Value::Literal(value - 0x21),
+            0x20..=0x3f => Value::Literal(value.wrapping_sub(0x21)),
             _ => panic!("Invalid value code: {}", value),
         }
     }
