@@ -147,7 +147,7 @@ impl Monitor {
         };
 
         let pixels = ((word0 as u32) << 16) + word1 as u32;
-        self.get_8x4_char(pixels)
+        self.get_wide_8x4_char(pixels)
     }
 
     pub fn get_8x4_char(&self, pixels: u32) -> String {
@@ -174,6 +174,34 @@ impl Monitor {
             self.get_2x2_char(block2), self.get_2x2_char(block3),
             self.get_2x2_char(block4), self.get_2x2_char(block5),
             self.get_2x2_char(block6), self.get_2x2_char(block7),
+        )
+    }
+
+
+    pub fn get_wide_8x4_char(&self, pixels: u32) -> String {
+        let col0 = ((pixels & 0xFF000000) >> 24) as u16;
+        let col1 = ((pixels & 0x00FF0000) >> 16) as u16;
+        let col2 = ((pixels & 0x0000FF00) >> 8)  as u16;
+        let col3 = ((pixels & 0x000000FF) >> 0)  as u16;
+
+        let block0 = (col0 & 0b00000011) + ((col1 & 0b00000011) << 2);
+        let block1 = (col2 & 0b00000011) + ((col3 & 0b00000011) << 2);
+
+        let block2 = ((col0 & 0b00001100) >> 2) + ((col1 & 0b00001100) << 0);
+        let block3 = ((col2 & 0b00001100) >> 2) + ((col3 & 0b00001100) << 0);
+
+        let block4 = ((col0 & 0b00110000) >> 4) + ((col1 & 0b00110000) >> 2);
+        let block5 = ((col2 & 0b00110000) >> 4) + ((col3 & 0b00110000) >> 2);
+
+        let block6 = ((col0 & 0b11000000) >> 6) + ((col1 & 0b11000000) >> 4);
+        let block7 = ((col2 & 0b11000000) >> 6) + ((col3 & 0b11000000) >> 4);
+
+        format!(
+            "{}{}\x1b[4D\x1b[B{}{}\x1b[4D\x1b[B{}{}\x1b[4D\x1b[B{}{}\x1b[3A",
+            self.get_wide_2x2_char(block0), self.get_wide_2x2_char(block1),
+            self.get_wide_2x2_char(block2), self.get_wide_2x2_char(block3),
+            self.get_wide_2x2_char(block4), self.get_wide_2x2_char(block5),
+            self.get_wide_2x2_char(block6), self.get_wide_2x2_char(block7),
         )
     }
 
@@ -205,11 +233,51 @@ impl Monitor {
 
             0xc => "▐".to_owned(),
 
-            0xd => "▟".to_owned(),
+            0xd => "▜".to_owned(),
 
-            0xe => "▜".to_owned(),
+            0xe => "▟".to_owned(),
 
             0xF => "█".to_owned(),
+
+            _ => {
+                "X".to_owned()
+            }
+        }
+    }
+
+    pub fn get_wide_2x2_char(&self, pixels: u16) -> String {
+        match pixels {
+            0x0 => "  ".to_owned(),
+
+            0x1 => "▀ ".to_owned(),
+
+            0x2 => "▄ ".to_owned(),
+
+            0x3 => "█ ".to_owned(),
+
+            0x4 => " ▀".to_owned(),
+
+            0x5 => "▀▀".to_owned(),
+
+            0x6 => "▄▀".to_owned(),
+
+            0x7 => "█▀".to_owned(),
+
+            0x8 => " ▄".to_owned(),
+
+            0x9 => "▀▄".to_owned(),
+
+            0xa => "▄▄".to_owned(),
+
+            0xb => "█▄".to_owned(),
+
+            0xc => " █".to_owned(),
+
+            0xd => "▀█".to_owned(),
+
+            0xe => "▄█".to_owned(),
+
+            0xF => "██".to_owned(),
 
             _ => {
                 "X".to_owned()
