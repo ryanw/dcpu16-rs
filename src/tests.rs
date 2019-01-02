@@ -1354,3 +1354,38 @@ fn write_to_register_relative_memory_address() {
     assert_eq!(machine.get_memory(0x000F), 0x04);
     assert_eq!(machine.get_register(PC), 0x0003);
 }
+
+// Getters
+#[test]
+fn read_from_literal_memory_address() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::NextWordPointer);
+    program.add_word(0xBEEF);
+    machine.memory.load_program(0x0000, &program);
+    machine.set_memory(0xBEEF, 0x1234);
+
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(A), 0x1234);
+    assert_eq!(machine.get_register(PC), 0x0002);
+}
+
+#[test]
+fn read_from_register_relative_memory_address() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::Literal(0x0A));
+    program.add(SET, Value::Register(B), Value::RegisterPointerOffset(A));
+    program.add_word(0x05);
+    machine.memory.load_program(0x0000, &program);
+    machine.set_memory(0x000F, 0x1234);
+
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_register(B), 0x1234);
+    assert_eq!(machine.get_register(PC), 0x0003);
+}
