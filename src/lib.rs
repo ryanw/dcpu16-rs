@@ -2,15 +2,15 @@
 mod tests;
 
 mod monitor;
-use downcast_rs::{impl_downcast, Downcast};
 pub use self::monitor::Monitor;
+use downcast_rs::{impl_downcast, Downcast};
 mod opcodes;
 use self::opcodes::*;
-use std::mem;
-use std::rc::Rc;
-use std::cell::{RefCell, Ref};
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::mem;
 use std::ops::{Index, IndexMut};
+use std::rc::Rc;
 
 fn to_signed(val: u16) -> i16 {
     unsafe { mem::transmute(val) }
@@ -24,8 +24,7 @@ pub trait HardwareDevice: Downcast {
     fn id(&self) -> u32;
     fn version(&self) -> u16;
     fn manufacturer(&self) -> u32;
-    fn handle_interrupt(&mut self, processor: &Processor) {
-    }
+    fn handle_interrupt(&mut self, _processor: &Processor) {}
 }
 impl_downcast!(HardwareDevice);
 
@@ -65,8 +64,7 @@ impl From<u16> for Instruction {
         // Specials
         if op == 0x00 {
             Instruction::new(SPL, Value::OpCode(b), Value::from(a))
-        }
-        else {
+        } else {
             Instruction::new(op as OpCode, Value::from(b), Value::from(a))
         }
     }
@@ -171,12 +169,10 @@ impl Instruction {
                         processor.set_register(C, c);
                         processor.set_register(X, x);
                         processor.set_register(Y, y);
-                    }
-                    else {
+                    } else {
                         panic!("TODO");
                     }
-                }
-                else {
+                } else {
                     processor.set_register(A, 0x00);
                     processor.set_register(B, 0x00);
                     processor.set_register(C, 0x00);
@@ -192,7 +188,7 @@ impl Instruction {
                     }
                 }
             }
-            _ => panic!("Invalid special op code {}", op)
+            _ => panic!("Invalid special op code {}", op),
         }
     }
 
@@ -396,8 +392,7 @@ impl Instruction {
                 let (value2, overflowed2) = value1.overflowing_add(ex);
                 if overflowed1 || overflowed2 {
                     ex = 0x0001;
-                }
-                else {
+                } else {
                     ex = 0x0000;
                 }
                 value2
@@ -408,8 +403,7 @@ impl Instruction {
                 let (value2, overflowed2) = value1.overflowing_add(ex);
                 if overflowed1 || overflowed2 {
                     ex = 0xFFFF;
-                }
-                else {
+                } else {
                     ex = 0x0000;
                 }
                 value2
@@ -462,7 +456,7 @@ impl Instruction {
             }
             Value::NextWord => {}
             Value::Literal(_) => {}
-            Value::OpCode(_) => {},
+            Value::OpCode(_) => {}
         }
     }
 
@@ -707,13 +701,16 @@ impl Processor {
     pub fn get_hardware(&self, index: u16) -> Option<Rc<RefCell<dyn HardwareDevice>>> {
         if let Some(rc) = self.hardware.get(index as usize) {
             Some(rc.clone())
-        }
-        else {
+        } else {
             None
         }
     }
 
-    pub fn with_hardware<T: HardwareDevice, F: FnMut(&T, &Processor)>(&self, index: u16, mut closure: F) {
+    pub fn with_hardware<T: HardwareDevice, F: FnMut(&T, &Processor)>(
+        &self,
+        index: u16,
+        mut closure: F,
+    ) {
         if let Some(rc) = self.get_hardware(index) {
             if let Ok(hardware) = rc.try_borrow_mut() {
                 if let Some(device) = hardware.downcast_ref::<T>() {
@@ -723,7 +720,11 @@ impl Processor {
         }
     }
 
-    pub fn with_hardware_mut<T: HardwareDevice, F: FnMut(&mut T, &mut Processor)>(&mut self, index: u16, mut closure: F) {
+    pub fn with_hardware_mut<T: HardwareDevice, F: FnMut(&mut T, &mut Processor)>(
+        &mut self,
+        index: u16,
+        mut closure: F,
+    ) {
         if let Some(rc) = self.get_hardware(index) {
             if let Ok(mut hardware) = rc.try_borrow_mut() {
                 if let Some(device) = hardware.downcast_mut::<T>() {
