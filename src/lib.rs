@@ -714,7 +714,7 @@ impl Processor {
     }
 
     pub fn with_hardware<T: HardwareDevice, F: FnMut(&T, &Processor)>(&self, index: u16, mut closure: F) {
-        if let Some(rc) = self.get_hardware(0) {
+        if let Some(rc) = self.get_hardware(index) {
             if let Ok(hardware) = rc.try_borrow_mut() {
                 if let Some(device) = hardware.downcast_ref::<T>() {
                     closure(device, self);
@@ -724,7 +724,7 @@ impl Processor {
     }
 
     pub fn with_hardware_mut<T: HardwareDevice, F: FnMut(&mut T, &mut Processor)>(&mut self, index: u16, mut closure: F) {
-        if let Some(rc) = self.get_hardware(0) {
+        if let Some(rc) = self.get_hardware(index) {
             if let Ok(mut hardware) = rc.try_borrow_mut() {
                 if let Some(device) = hardware.downcast_mut::<T>() {
                     closure(device, self);
