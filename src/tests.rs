@@ -1,4 +1,7 @@
 use super::*;
+use super::Register::*;
+use super::opcodes::*;
+use std::mem;
 
 fn to_unsigned(val: i16) -> u16 {
     unsafe { mem::transmute(val) }
@@ -469,16 +472,16 @@ fn ifb_register_with_literal_when_true() {
     // Run conditional - IFB
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0003);
@@ -534,16 +537,16 @@ fn ifc_register_with_literal_when_true() {
     // Run conditional - IFC
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0003);
@@ -599,16 +602,16 @@ fn ife_register_with_literal_when_true() {
     // Run conditional - IFE
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0003);
@@ -664,16 +667,16 @@ fn ifn_register_with_literal_when_true() {
     // Run conditional - IFN
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0003);
@@ -729,16 +732,16 @@ fn ifg_register_with_literal_when_true() {
     // Run conditional - IFG
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0003);
@@ -777,7 +780,6 @@ fn ifg_register_with_literal_when_false() {
     assert_eq!(machine.get_register(X), 0x000C);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
-
 
 #[test]
 fn ifa_register_with_literal_when_true() {
@@ -849,16 +851,6 @@ fn ifa_register_with_literal_when_false() {
     assert_eq!(machine.get_register(EX), 0x0000);
 }
 
-
-
-
-
-
-
-
-
-
-
 #[test]
 fn ifl_register_with_literal_when_true() {
     let mut machine = Processor::new();
@@ -875,16 +867,16 @@ fn ifl_register_with_literal_when_true() {
     // Run conditional - IFL
     assert_eq!(machine.get_register(PC), 0x0001);
     machine.tick();
-    assert_eq!(machine.cycle, 2);
+    assert_eq!(machine.cycle(), 2);
     machine.tick();
-    assert_eq!(machine.cycle, 3);
+    assert_eq!(machine.cycle(), 3);
 
     assert_eq!(machine.get_register(PC), 0x0002);
 
     // Run next instruction - SET
     machine.tick();
     machine.tick();
-    assert_eq!(machine.cycle, 5);
+    assert_eq!(machine.cycle(), 5);
     assert_eq!(machine.get_register(PC), 0x0004);
 
     assert_eq!(machine.get_register(A), 0x0002);
@@ -923,7 +915,6 @@ fn ifl_register_with_literal_when_false() {
     assert_eq!(machine.get_register(X), 0x000C);
     assert_eq!(machine.get_register(EX), 0x0000);
 }
-
 
 #[test]
 fn ifu_register_with_literal_when_true() {
@@ -995,7 +986,6 @@ fn ifu_register_with_literal_when_false() {
     assert_eq!(machine.get_register(EX), 0x0000);
 }
 
-
 #[test]
 fn adx_register_with_literal() {
     let mut machine = Processor::new();
@@ -1019,9 +1009,7 @@ fn adx_register_with_literal() {
     program.add(ADD, Value::Register(B), Value::Register(Y));
     program.add(ADX, Value::Register(A), Value::Register(X));
 
-
     machine.memory.load_program(0x0000, &program);
-
 
     // Set A
     machine.tick();
@@ -1036,7 +1024,6 @@ fn adx_register_with_literal() {
     // Set Y
     machine.tick();
     machine.tick();
-
 
     // Add lows
     machine.tick();
@@ -1066,7 +1053,6 @@ fn sbx_register_with_literal() {
     program.add(SET, Value::Register(B), Value::NextWord);
     program.add_word(0x2C2A);
 
-
     // Set X,Y to 0x000186A0
     program.add(SET, Value::Register(X), Value::NextWord);
     program.add_word(0xFF03);
@@ -1079,9 +1065,7 @@ fn sbx_register_with_literal() {
     program.add(ADD, Value::Register(B), Value::Register(Y));
     program.add(SBX, Value::Register(A), Value::Register(X));
 
-
     machine.memory.load_program(0x0000, &program);
-
 
     // Set A
     machine.tick();
@@ -1096,7 +1080,6 @@ fn sbx_register_with_literal() {
     // Set Y
     machine.tick();
     machine.tick();
-
 
     // Add lows
     machine.tick();

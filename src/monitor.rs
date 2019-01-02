@@ -1,4 +1,6 @@
-use super::*;
+use super::hardware::HardwareDevice;
+use super::processor::Processor;
+use super::processor::Register::*;
 
 const DEFAULT_FONT: [u16; 256] = [
     0x000f, 0x0808, 0x080f, 0x0808, 0x08f8, 0x0808, 0x00ff, 0x0808, 0x0808, 0x0808, 0x08ff, 0x0808,
@@ -249,7 +251,7 @@ impl Monitor {
 
             0x2 => "▄ ".to_owned(),
 
-            0x3 => "█ ".to_owned(),
+            0x3 => "\x1b[7m \x1b[27m ".to_owned(),
 
             0x4 => " ▀".to_owned(),
 
@@ -257,7 +259,7 @@ impl Monitor {
 
             0x6 => "▄▀".to_owned(),
 
-            0x7 => "█▀".to_owned(),
+            0x7 => "\x1b[7m \x1b[27m▀".to_owned(),
 
             0x8 => " ▄".to_owned(),
 
@@ -265,13 +267,13 @@ impl Monitor {
 
             0xa => "▄▄".to_owned(),
 
-            0xb => "█▄".to_owned(),
+            0xb => "\x1b[7m \x1b[27m▄".to_owned(),
 
-            0xc => " █".to_owned(),
+            0xc => " \x1b[7m \x1b[27m".to_owned(),
 
-            0xd => "▀█".to_owned(),
+            0xd => "▀\x1b[7m \x1b[27m".to_owned(),
 
-            0xe => "▄█".to_owned(),
+            0xe => "▄\x1b[7m \x1b[27m".to_owned(),
 
             0xF => "\x1b[7m  \x1b[27m".to_owned(),
 
