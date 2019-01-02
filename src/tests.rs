@@ -1389,3 +1389,46 @@ fn read_from_register_relative_memory_address() {
     assert_eq!(machine.get_register(B), 0x1234);
     assert_eq!(machine.get_register(PC), 0x0003);
 }
+
+#[test]
+fn copy_from_memory_to_memory_using_literals() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::NextWordPointer, Value::NextWordPointer);
+    program.add_word(0xDEAD);
+    program.add_word(0xBEEF);
+    machine.memory.load_program(0x0000, &program);
+    machine.set_memory(0xDEAD, 0x5555);
+    machine.set_memory(0xBEEF, 0x2222);
+
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_memory(0xDEAD), 0x5555);
+    assert_eq!(machine.get_memory(0xBEEF), 0x5555);
+    assert_eq!(machine.get_register(PC), 0x0003);
+}
+
+#[test]
+fn copy_from_memory_to_memory_using_registers() {
+    let mut machine = Processor::new();
+    let mut program = Program::new();
+    program.add(SET, Value::Register(A), Value::NextWord);
+    program.add_word(0xDEAD);
+    program.add(SET, Value::Register(B), Value::NextWord);
+    program.add_word(0xBEEF);
+    program.add(SET, Value::RegisterPointer(B), Value::RegisterPointer(A));
+    machine.memory.load_program(0x0000, &program);
+    machine.set_memory(0xDEAD, 0x5555);
+    machine.set_memory(0xBEEF, 0x2222);
+
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    machine.tick();
+    machine.tick();
+
+    assert_eq!(machine.get_memory(0xDEAD), 0x5555);
+    assert_eq!(machine.get_memory(0xBEEF), 0x5555);
+    assert_eq!(machine.get_register(PC), 0x0005);
+}

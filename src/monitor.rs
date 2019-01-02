@@ -136,12 +136,12 @@ impl Monitor {
     pub fn get_font_char(&self, processor: &Processor, index: u16) -> String {
         let addr = index * 2; // 2 words per char
         let word0 = if self.font_addr > 0 {
-            processor.get_memory(self.font_addr + index as u16)
+            processor.get_memory(self.font_addr + addr)
         } else {
             DEFAULT_FONT[addr as usize]
         };
         let word1 = if self.font_addr > 0 {
-            processor.get_memory(self.font_addr + index as u16 + 1)
+            processor.get_memory(self.font_addr + addr + 1)
         } else {
             DEFAULT_FONT[addr as usize + 1]
         };
