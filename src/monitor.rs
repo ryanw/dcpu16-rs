@@ -235,7 +235,7 @@ impl Monitor {
 
             0xe => "▟".to_owned(),
 
-            0xF => "█".to_owned(),
+            0xF => "\x1b[7m \x1b[27m".to_owned(),
 
             _ => "X".to_owned(),
         }
@@ -273,7 +273,7 @@ impl Monitor {
 
             0xe => "▄█".to_owned(),
 
-            0xF => "██".to_owned(),
+            0xF => "\x1b[7m  \x1b[27m".to_owned(),
 
             _ => "X".to_owned(),
         }
